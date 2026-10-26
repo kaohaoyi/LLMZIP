@@ -3,7 +3,7 @@
 > **零暫存檔串流量化器與模型加載引擎。**  
 > 磁碟峰值佔用嚴格等於 **1.0x 最終量化檔大小 + 4 KB `.wal`**，不向本機硬碟寫入任何原始 140 GB 權重暫存。
 
-[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
+[![License: AGPL-3.0 / Commercial](https://img.shields.io/badge/License-AGPL%203.0%20%2F%20Commercial-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 [![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](Cargo.toml)
 [![Tests](https://img.shields.io/badge/tests-25%20passed-brightgreen.svg)](crates/llmzip-core/tests)
@@ -193,9 +193,11 @@ if (status == LLMZIP_OK) {
 
 ---
 
-## 開源授權
+## 開源與商用授權
 
-本專案採雙重授權條款：
+本專案採雙重授權機制（Dual Licensing）：
 
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
-- MIT license ([LICENSE-MIT](LICENSE-MIT))
+- **社群開源版（Community Edition）**：遵循 **[GNU Affero General Public License v3.0 (AGPL-3.0-or-later)](LICENSE)**。個人、學術研究與開源社群可完全免費使用。若將 LLMZIP 整合至對外網路服務（如 SaaS、雲端 API、大模型託管服務）或發布修改版本，必須依 AGPLv3 規定公開其完整原始碼。
+- **商業與企業授權（Commercial / Enterprise License）**：專為希望將 LLMZIP 整合進內部商業平台、專有閉源產品、雲端託管算力基礎設施，且不願受 AGPLv3 原始碼公開義務約束的企業提供。
+
+如需商業授權、定製整合方案或企業 SLA 支援，請洽詢維護者或透過 [GitHub Discussions](https://github.com/kaohaoyi/LLMZIP/discussions) 發起商業洽談。

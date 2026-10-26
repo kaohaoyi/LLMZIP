@@ -3,7 +3,7 @@
 > **임시 파일 생성 없는 스트리밍 LLM 양자화 & 모델 로더.**  
 > 디스크 피크 점유율은 엄격하게 **1.0x 최종 양자화 파일 크기 + 4 KB `.wal`**. 140 GB에 달하는 중간 가중치 덤프가 발생하지 않습니다.
 
-[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
+[![License: AGPL-3.0 / Commercial](https://img.shields.io/badge/License-AGPL%203.0%20%2F%20Commercial-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 [![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](Cargo.toml)
 [![Tests](https://img.shields.io/badge/tests-25%20passed-brightgreen.svg)](crates/llmzip-core/tests)
@@ -193,9 +193,11 @@ if (status == LLMZIP_OK) {
 
 ---
 
-## 라이선스
+## 오픈소스 및 상용 라이선스
 
-본 프로젝트는 다음 라이선스 하에 이중 라이선스로 배포됩니다:
+본 프로젝트는 듀얼 라이선스(Dual Licensing) 방식을 채택합니다:
 
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
-- MIT license ([LICENSE-MIT](LICENSE-MIT))
+- **커뮤니티 오픈소스 버전 (Community Edition)**: **[GNU Affero General Public License v3.0 (AGPL-3.0-or-later)](LICENSE)** 하에 배포됩니다. 개인 학습, 학술 연구 및 오픈소스 커뮤니티에서는 완전 무료로 사용할 수 있습니다. 단, LLMZIP을 네트워크 서비스(SaaS, 클라우드 API, 모델 호스팅 등)에 통합하거나 수정본을 배포하는 경우 AGPLv3에 따라 전체 소스 코드를 공개해야 합니다.
+- **상용 및 엔터프라이즈 라이선스 (Commercial / Enterprise License)**: 내부 상용 플랫폼, 독점 비공개 제품, 클라우드 인프라에 통합하여 AGPLv3의 소스 코드 공개 의무를 면제받고자 하는 기업을 위해 제공됩니다.
+
+상용 라이선스 구매, 맞춤형 통합 솔루션 또는 SLA 지원이 필요한 경우 메인테이너에게 문의하거나 [GitHub Discussions](https://github.com/kaohaoyi/LLMZIP/discussions)를 통해 문의해 주시기 바랍니다.

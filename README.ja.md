@@ -3,7 +3,7 @@
 > **一時ファイル完全ゼロのストリーミング量子化＆モデルローダー。**  
 > ディスク使用ピークは厳密に **1.0x 最終出力サイズ + 4 KB `.wal`**。中間の 140 GB 巨大ファイル書き込みは一切発生しません。
 
-[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
+[![License: AGPL-3.0 / Commercial](https://img.shields.io/badge/License-AGPL%203.0%20%2F%20Commercial-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 [![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](Cargo.toml)
 [![Tests](https://img.shields.io/badge/tests-25%20passed-brightgreen.svg)](crates/llmzip-core/tests)
@@ -193,9 +193,11 @@ if (status == LLMZIP_OK) {
 
 ---
 
-## ライセンス
+## オープンソースおよび商用ライセンス
 
-本プロジェクトは以下のデュアルライセンスです：
+本プロジェクトはデュアルライセンス（Dual Licensing）モデルを採用しています：
 
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
-- MIT license ([LICENSE-MIT](LICENSE-MIT))
+- **コミュニティオープンソース版（Community Edition）**：**[GNU Affero General Public License v3.0 (AGPL-3.0-or-later)](LICENSE)** に準拠します。個人、学術研究、オープンソースコミュニティでの利用は完全無料です。LLMZIP をネットワーク経由のサービス（SaaS、クラウド API、モデルホスティングなど）に組み込む場合、または改変版を配布する場合は、AGPLv3 に従い全ソースコードを公開する必要があります。
+- **商用・エンタープライズライセンス（Commercial / Enterprise License）**：社内商用プラットフォーム、プロプライエタリな商用製品、クラウドインフラへの組み込みを希望し、AGPLv3 のソースコード公開義務を回避したい企業向けに提供されます。
+
+商用ライセンス、カスタム統合、SLA サポートをご希望の方は、メンテナーに直接連絡するか、[GitHub Discussions](https://github.com/kaohaoyi/LLMZIP/discussions) にてお問い合わせください。

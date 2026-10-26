@@ -3,7 +3,7 @@
 > **Stream & Quantize Large Language Models with Zero Temp Files.**  
 > Peak disk footprint = **1.0x final output size + 4 KB `.wal`**. No intermediate 140 GB weight dumps.
 
-[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
+[![License: AGPL-3.0 / Commercial](https://img.shields.io/badge/License-AGPL%203.0%20%2F%20Commercial-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 [![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](Cargo.toml)
 [![Tests](https://img.shields.io/badge/tests-25%20passed-brightgreen.svg)](crates/llmzip-core/tests)
@@ -195,9 +195,9 @@ if (status == LLMZIP_OK) {
 
 ## License
 
-Dual-licensed under either of:
+This project is dual-licensed:
 
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+- **Open Source / Community Edition**: Licensed under the **[GNU Affero General Public License v3.0 (AGPL-3.0-or-later)](LICENSE)**. Free for personal, academic, and community use. If you modify or integrate LLMZIP into network-accessible services (SaaS, cloud APIs, hosted inference platforms), you must provide your complete source code under the AGPLv3.
+- **Commercial & Enterprise License**: For organizations seeking to embed LLMZIP into proprietary, closed-source software, cloud infrastructure, or commercial SaaS products without AGPLv3 copyleft obligations.
 
-at your option.
+For commercial licensing, custom integration, or enterprise SLA inquiries, please contact the maintainer or open a commercial inquiry via [GitHub Discussions](https://github.com/kaohaoyi/LLMZIP/discussions).
