@@ -1,0 +1,12 @@
+[package]
+name = "llmzip-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+llmzip-core.workspace = true

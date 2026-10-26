@@ -1,0 +1,36 @@
+# Declarative Model Architecture Mapping Registry for LLMZIP
+# Maps HuggingFace SafeTensors tensor names, RoPE layouts, and MoE expert stacking rules
+# to GGUF and AWQ output layouts without loading all tensors in memory simultaneously.
+
+[defaults]
+gguf_alignment = 32
+awq_group_size = 128
+
+[architectures.llama]
+aliases = ["LlamaForCausalLM", "MistralForCausalLM", "Qwen2ForCausalLM"]
+rope_Layout = "interleaved" # Llama uses interleaved RoPE in GGUF; Qwen2 overrides to neox
+norm_eps_key = "rms_norm_eps"
+
+[architectures.llama.tensor_map]
+"model.embed_tokens.weight" = { gguf = "token_embd.weight", role = "embedding" }
+"model.norm.weight" = { gguf = "output_norm.weight", role = "norm", force_quant = "F32" }
+"lm_head.weight" = { gguf = "output.weight", role = "lm_head" }
+"model.layers.{bid}.input_layernorm.weight" = { gguf = "blk.{bid}.attn_norm.weight", role = "norm", force_quant = "F32" }
+"model.layers.{bid}.post_attention_layernorm.weight" = { gguf = "blk.{bid}.ffn_norm.weight", role = "norm", force_quant = "F32" }
+"model.layers.{bid}.self_attn.q_proj.weight" = { gguf = "blk.{bid}.attn_q.weight", role = "attn_q" }
+"model.layers.{bid}.self_attn.k_proj.weight" = { gguf = "blk.{bid}.attn_k.weight", role = "attn_k" }
+"model.layers.{bid}.self_attn.v_proj.weight" = { gguf = "blk.{bid}.attn_v.weight", role = "attn_v", high_precision_candidate = true }
+"model.layers.{bid}.self_attn.o_proj.weight" = { gguf = "blk.{bid}.attn_output.weight", role = "attn_o" }
+"model.layers.{bid}.mlp.gate_proj.weight" = { gguf = "blk.{bid}.ffn_gate.weight", role = "ffn_gate" }
+"model.layers.{bid}.mlp.up_proj.weight" = { gguf = "blk.{bid}.ffn_up.weight", role = "ffn_up" }
+"model.layers.{bid}.mlp.down_proj.weight" = { gguf = "blk.{bid}.ffn_down.weight", role = "ffn_down", high_precision_candidate = true }
+
+[architectures.mixtral]
+aliases = ["MixtralForCausalLM", "Qwen2MoeForCausalLM", "DeepseekV2ForCausalLM"]
+is_moe = true
+
+[architectures.mixtral.moe_stack_map]
+"model.layers.{bid}.block_sparse_moe.gate.weight" = { gguf = "blk.{bid}.ffn_gate_inp.weight", role = "moe_router", force_quant = "F32" }
+"model.layers.{bid}.block_sparse_moe.experts.{eid}.w1.weight" = { gguf = "blk.{bid}.ffn_gate_exps.weight", role = "moe_expert", expert_idx = "{eid}" }
+"model.layers.{bid}.block_sparse_moe.experts.{eid}.w2.weight" = { gguf = "blk.{bid}.ffn_down_exps.weight", role = "moe_expert", expert_idx = "{eid}", high_precision_candidate = true }
+"model.layers.{bid}.block_sparse_moe.experts.{eid}.w3.weight" = { gguf = "blk.{bid}.ffn_up_exps.weight", role = "moe_expert", expert_idx = "{eid}" }

@@ -1,0 +1,142 @@
+use std::fmt;
+use std::io;
+
+/// Comprehensive error and security violation taxonomy covering E01 through E12.
+#[derive(Debug)]
+pub enum LlmZipError {
+    /// [E01] Malicious oversized SafeTensors JSON header (> 100 MB or 0 bytes).
+    HeaderTooLarge {
+        shard_name: String,
+        header_len: u64,
+        max_allowed: u64,
+    },
+    /// [E02] Tensor offset overlap, inversion (`start > end`), out-of-bounds, or shape integer overflow.
+    InvalidTensorBounds {
+        shard_name: String,
+        tensor_name: String,
+        reason: String,
+    },
+    /// [E03] Cryptographic SHA-256 mismatch at shard EOF (MITM tampering or corrupted upstream).
+    Sha256Mismatch {
+        shard_name: String,
+        expected_hex: String,
+        actual_hex: String,
+    },
+    /// [E04] Numerical poisoning (`NaN` or `Inf`) detected in upstream weight tensor when sanitization is disabled.
+    NumericalPoisoning {
+        tensor_name: String,
+        element_index: usize,
+        raw_bits: u16,
+    },
+    /// [E05] Invalid tensor shape or zero-dimension tensor.
+    InvalidShape {
+        tensor_name: String,
+        shape: Vec<usize>,
+    },
+    /// [E08 / IO] Underlying filesystem or pre-allocation error (e.g., ENOSPC).
+    Io(io::Error),
+    /// [E09] Upstream HTTP Range protocol violation (e.g., mismatched 206 Content-Range).
+    HttpRangeViolation {
+        shard_name: String,
+        expected_start: u64,
+        actual_start: u64,
+    },
+    /// [E10] Concurrent process lock conflict on the target `.unverified` or `.wal` file.
+    FileLocked {
+        path: String,
+    },
+    /// [E12] Path traversal or forbidden format (e.g., `.bin` pickle file or `../` in shard filename).
+    SecurityPathViolation {
+        offending_path: String,
+        reason: String,
+    },
+    /// WAL corruption or CRC32 mismatch on crash recovery.
+    WalCorrupted {
+        reason: String,
+    },
+    /// JSON parsing or metadata error.
+    MetadataParse(String),
+}
+
+impl fmt::Display for LlmZipError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::HeaderTooLarge {
+                shard_name,
+                header_len,
+                max_allowed,
+            } => write!(
+                f,
+                "[E01 Security] Shard '{}' header size {} bytes exceeds limit {} bytes",
+                shard_name, header_len, max_allowed
+            ),
+            Self::InvalidTensorBounds {
+                shard_name,
+                tensor_name,
+                reason,
+            } => write!(
+                f,
+                "[E02 Security] Invalid tensor bounds for '{}' in shard '{}': {}",
+                tensor_name, shard_name, reason
+            ),
+            Self::Sha256Mismatch {
+                shard_name,
+                expected_hex,
+                actual_hex,
+            } => write!(
+                f,
+                "[E03 Security] Cryptographic SHA-256 mismatch on shard '{}': expected {}, got {}",
+                shard_name, expected_hex, actual_hex
+            ),
+            Self::NumericalPoisoning {
+                tensor_name,
+                element_index,
+                raw_bits,
+            } => write!(
+                f,
+                "[E04 Security] Numerical poisoning (NaN/Inf, raw=0x{:04X}) in tensor '{}' at index {}",
+                raw_bits, tensor_name, element_index
+            ),
+            Self::InvalidShape { tensor_name, shape } => write!(
+                f,
+                "[E05 Layout] Invalid tensor shape for '{}': {:?}",
+                tensor_name, shape
+            ),
+            Self::Io(err) => write!(f, "[E08 I/O] {}", err),
+            Self::HttpRangeViolation {
+                shard_name,
+                expected_start,
+                actual_start,
+            } => write!(
+                f,
+                "[E09 Network] HTTP Range violation on '{}': expected byte offset {}, got {}",
+                shard_name, expected_start, actual_start
+            ),
+            Self::FileLocked { path } => write!(
+                f,
+                "[E10 Concurrency] Target file '{}' is already locked by another LLMZIP process",
+                path
+            ),
+            Self::SecurityPathViolation {
+                offending_path,
+                reason,
+            } => write!(
+                f,
+                "[E12 Security] Forbidden path or format '{}': {}",
+                offending_path, reason
+            ),
+            Self::WalCorrupted { reason } => write!(f, "[WAL Recovery] {}", reason),
+            Self::MetadataParse(msg) => write!(f, "[Metadata] {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for LlmZipError {}
+
+impl From<io::Error> for LlmZipError {
+    fn from(err: io::Error) -> Self {
+        Self::Io(err)
+    }
+}
+
+pub type Result<T> = std::result::Result<T, LlmZipError>;

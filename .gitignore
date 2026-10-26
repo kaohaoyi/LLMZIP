@@ -1,0 +1,71 @@
+# ==============================================================================
+# LLMZIP .gitignore Specification
+# Defines precise exclusion rules to ensure ONLY clean, reproducible source code,
+# declarative specs, C SDK headers, multi-language documentation, and verification
+# scripts are tracked on GitHub.
+# ==============================================================================
+
+# --- Rust & Build Artifacts (DO NOT COMMIT) ---
+target/
+**/*.rs.bk
+*.d
+*.rlib
+*.pdb
+*.exp
+*.lib
+*.dll
+*.so
+*.dylib
+*.exe
+
+# --- Sandboxes, Scratch Dirs & Generated Model Binaries (DO NOT COMMIT) ---
+# .scratch/ contains temporary evaluation runs, local issue working notes,
+# and heavy generated model files (.gguf, .safetensors, .wal, .bin).
+.scratch/
+
+# --- Private Marketing & Launch Plans (STRICT CONFIDENTIAL - NEVER COMMIT) ---
+marketing/
+.marketing/
+.private/
+marketing_private/
+*.marketing.*
+*.private.*
+
+# --- Internal Docs, Reports & Agent Rules (EXCLUDED FROM REPO) ---
+docs/
+CONTEXT.md
+AGENTS.md
+test_sandbox_qa.ps1
+
+# --- Model & Checkpoint Binaries (DO NOT COMMIT) ---
+# Prevent accidental leak of multi-gigabyte weight files into Git LFS / history.
+*.gguf
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.wal
+*.lock
+*.part
+*.unverified
+*.poisoned
+
+# --- Operating System & Editor Junk ---
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# --- Automated Profiling & Crash Logs ---
+*.log
+*.profdata
+*.profraw
+cobertura.xml

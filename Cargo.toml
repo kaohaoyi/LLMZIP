@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/llmzip-core",
+    "crates/llmzip-cli",
+    "crates/llmzip-ffi",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+authors = ["LLMZIP Contributors"]
+description = "HatchZip-inspired streaming LLM weight quantizer (GGUF/AWQ) for extreme disk-constrained environments"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rayon = "1.10"
+llmzip-core = { path = "crates/llmzip-core" }
