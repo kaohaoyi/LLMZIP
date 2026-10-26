@@ -5,7 +5,7 @@ use std::path::Path;
 
 #[test]
 fn test_security_path_validation() {
-    // 1. 合法路徑
+    // 1. 合法相對路徑
     assert!(validate_target_path(Path::new("output.gguf")).is_ok());
     assert!(validate_target_path(Path::new("models/my_model.awq")).is_ok());
 
@@ -20,17 +20,66 @@ fn test_security_path_validation() {
         other => panic!("Expected InvalidExtension, got {:?}", other),
     }
 
-    // 3. 路徑穿越攻擊
+    // 3. 路徑穿越攻擊 (..)
     match validate_target_path(Path::new("../../etc/passwd.gguf")) {
         Err(SecurityError::PathTraversalDetected) => {}
         other => panic!("Expected PathTraversalDetected, got {:?}", other),
     }
 
-    // 4. 空路徑
+    // 4. 絕對路徑與根目錄攻擊
+    match validate_target_path(Path::new("/etc/model.gguf")) {
+        Err(SecurityError::PathTraversalDetected) => {}
+        other => panic!("Expected PathTraversalDetected, got {:?}", other),
+    }
+
+    // 5. Windows 盤符與 UNC 攻擊路徑 (C:\... 或 \\server\share\...)
+    match validate_target_path(Path::new(r"C:\Windows\System32\evil.gguf")) {
+        Err(SecurityError::PathTraversalDetected) => {}
+        other => panic!("Expected PathTraversalDetected for Windows drive path, got {:?}", other),
+    }
+
+    match validate_target_path(Path::new(r"\\192.168.1.100\share\loot.gguf")) {
+        Err(SecurityError::PathTraversalDetected) => {}
+        other => panic!("Expected PathTraversalDetected for UNC path, got {:?}", other),
+    }
+
+    // 6. 空路徑
     match validate_target_path(Path::new("")) {
         Err(SecurityError::EmptyPath) => {}
         other => panic!("Expected EmptyPath, got {:?}", other),
     }
+}
+
+#[test]
+fn test_mcp_ping() {
+    let req = json!({
+        "jsonrpc": "2.0",
+        "id": "ping-123",
+        "method": "ping"
+    });
+
+    let resp_str = handle_json_rpc_line(&req.to_string()).expect("Should return a response");
+    let resp: Value = serde_json::from_str(&resp_str).expect("Valid JSON response");
+
+    assert_eq!(resp["jsonrpc"], "2.0");
+    assert_eq!(resp["id"], "ping-123");
+    assert_eq!(resp["result"], json!({}));
+}
+
+#[test]
+fn test_mcp_notification_no_response() {
+    let notify = json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized"
+    });
+    assert!(handle_json_rpc_line(&notify.to_string()).is_none());
+
+    let custom_notify = json!({
+        "jsonrpc": "2.0",
+        "method": "custom_event"
+    });
+    // 無 id 的消息一律為 notification，絕不回傳 response
+    assert!(handle_json_rpc_line(&custom_notify.to_string()).is_none());
 }
 
 #[test]

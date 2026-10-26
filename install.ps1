@@ -22,8 +22,8 @@ try {
     Remove-Item "$env:TEMP\llmzip_extracted" -Recurse -Force -ErrorAction SilentlyContinue
     Write-Host "[✓] LLMZIP installed successfully to $InstallDir\llmzip.exe" -ForegroundColor Green
 } catch {
-    Write-Warning "[!] Release binary download failed. Falling back to cargo install..."
-    cargo install llmzip-cli --locked
+    Write-Warning "[!] Release binary download failed. Falling back to compiling via cargo git..."
+    cargo install --git "https://github.com/$Repo.git" llmzip-cli --locked
     exit $LASTEXITCODE
 }
 

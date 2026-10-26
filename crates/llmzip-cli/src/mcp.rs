@@ -31,31 +31,49 @@ pub fn handle_json_rpc_line(line: &str) -> Option<String> {
         }
     };
 
-    let id = req.get("id").cloned();
-    let method = match req.get("method").and_then(|m| m.as_str()) {
-        Some(m) => m,
-        None => {
-            if id.is_some() {
-                let err_resp = json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "error": {
-                        "code": -32600,
-                        "message": "Invalid Request: missing method"
-                    }
-                });
-                return Some(err_resp.to_string());
+    // JSON-RPC 2.0 規範：請求必須為 JSON 物件
+    if !req.is_object() {
+        let err_resp = json!({
+            "jsonrpc": "2.0",
+            "id": null,
+            "error": {
+                "code": -32600,
+                "message": "Invalid Request: expected a JSON object"
             }
-            return None;
-        }
-    };
+        });
+        return Some(err_resp.to_string());
+    }
 
-    // 如果是通知（無 id），不需要回覆
-    if id.is_none() && method.starts_with("notifications/") {
+    let id = req.get("id").cloned();
+
+    // 嚴格遵循 JSON-RPC 2.0：凡是無 id 的消息皆為 Notification，Server 絕不回傳任何響應
+    if id.is_none() {
         return None;
     }
 
+    let method = match req.get("method").and_then(|m| m.as_str()) {
+        Some(m) => m,
+        None => {
+            let err_resp = json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "error": {
+                    "code": -32600,
+                    "message": "Invalid Request: missing method"
+                }
+            });
+            return Some(err_resp.to_string());
+        }
+    };
+
     let resp = match method {
+        // MCP 必備 ping 保活處理
+        "ping" => json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": {}
+        }),
+
         "initialize" => json!({
             "jsonrpc": "2.0",
             "id": id,
@@ -183,7 +201,7 @@ pub fn handle_json_rpc_line(line: &str) -> Option<String> {
                     let output = args.get("output").and_then(|o| o.as_str()).unwrap_or("");
                     let preset_str = args.get("preset").and_then(|p| p.as_str()).unwrap_or("q4_k_m");
 
-                    // 1. 安全沙箱檢查路徑穿越與副檔名
+                    // 1. 安全沙箱檢查路徑穿越、Prefix、UNC 與副檔名
                     match validate_target_path(Path::new(output)) {
                         Err(sec_err) => {
                             json!({

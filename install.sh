@@ -33,14 +33,14 @@ URL="https://github.com/${REPO}/releases/download/v0.1.0/${ASSET}"
 echo "[*] Downloading LLMZIP for ${TARGET}..."
 if command -v curl >/dev/null 2>&1; then
   curl -fsSL "$URL" -o /tmp/llmzip.tar.gz || {
-    echo "[!] Prebuilt binary not yet on release. Falling back to cargo..." >&2
-    cargo install llmzip-cli --locked
+    echo "[!] Prebuilt binary not yet on release. Falling back to compiling via cargo git..." >&2
+    cargo install --git "https://github.com/${REPO}.git" llmzip-cli --locked
     exit 0
   }
 elif command -v wget >/dev/null 2>&1; then
   wget -qO /tmp/llmzip.tar.gz "$URL" || {
-    echo "[!] Prebuilt binary not yet on release. Falling back to cargo..." >&2
-    cargo install llmzip-cli --locked
+    echo "[!] Prebuilt binary not yet on release. Falling back to compiling via cargo git..." >&2
+    cargo install --git "https://github.com/${REPO}.git" llmzip-cli --locked
     exit 0
   }
 fi
