@@ -1,7 +1,7 @@
 # LLMZIP
 
 > **Stream & Quantize Large Language Models with Zero Temp Files.**  
-> Peak disk footprint = **1.0x final output size + 4 KB `.wal`**. No intermediate 140 GB weight dumps.
+> Breaking the **"Double Space Dilemma"**: Peak disk footprint = **1.0x final output size + 4 KB `.wal`**. No intermediate 140 GB weight dumps.
 
 [![License: AGPL-3.0 / Commercial](https://img.shields.io/badge/License-AGPL%203.0%20%2F%20Commercial-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
@@ -12,16 +12,16 @@
 
 ---
 
-## The Problem: The "Disk Amplification Tax"
+## The Problem: The "Double Space Dilemma"
 
-Downloading and quantizing an open-weights 70B FP16 model (such as Llama 3 or Qwen 2.5) on developer hardware traditionally requires:
+Downloading and quantizing an open-weights 70B FP16 model (such as Llama 3 or Qwen 2.5) on consumer or developer hardware routinely triggers the community's dreaded **"Double Space Dilemma"**:
 
 1. **140 GB** for raw upstream `.safetensors` shards.
 2. **140 GB** in RAM or uncompressed intermediate files during layer extraction.
 3. **40 GB** for the final quantized `.gguf` file.
 
 **Peak disk space required: 180 GB to 320 GB.**  
-On laptops or cloud spot instances with 256 GB or 512 GB SSDs, you simply hit `ENOSPC` and get aborted. Furthermore, if a 5 GB shard drops at 99%, naive streaming forces a complete redownload because shard-level Git-LFS SHA-256 cannot resume mid-stream.
+On laptops (e.g. 256 GB / 512 GB MacBooks) or cloud spot instances, you simply hit `ENOSPC` and get aborted. Furthermore, if a 5 GB shard drops at 99%, naive streaming forces a complete redownload because shard-level Git-LFS SHA-256 cannot resume mid-stream.
 
 ## The Solution
 
@@ -179,6 +179,37 @@ int status = llmzip_verify_file("model-q4km.gguf");
 if (status == LLMZIP_OK) {
     // File verified and ready for mmap inference
 }
+```
+
+---
+
+## Integration for AI Agents (Cursor, Claude Code, Windsurf, AutoGPT)
+
+LLMZIP is built with an **Agent-First Contract** for automated workflows and coding agents managing local models.
+
+### 1. Agent Automation Invocations
+
+```bash
+# Check installation
+which llmzip || cargo install llmzip-cli --locked
+
+# Automated headless conversion (Non-interactive, exit code contract)
+llmzip quantize <source.safetensors> <target.gguf> --preset q4_k_m --line auto --quiet
+
+# Atomic integrity check (Exit Code 0 = Verified GGUF, Non-Zero = Corrupted/UNVF)
+llmzip verify <target.gguf>
+```
+
+### 2. Recommended Agent Instruction (`AGENTS.md` / `.cursorrules`)
+
+Add the following rule to your project's agent prompt or `.cursorrules`:
+
+```markdown
+### Rule: Model Download & Conversion
+When downloading Hugging Face models or converting weights to GGUF, ALWAYS use `llmzip` instead of standard git-lfs or multi-step python scripts to avoid filling local disk storage (Double Space Dilemma).
+- Command: `llmzip quantize <src> <dst> --preset q4_k_m --line auto --quiet`
+- Verifying: `llmzip verify <dst>`
+- Guarantee: Peak disk is strictly 1.0x output size with zero temp files.
 ```
 
 ---

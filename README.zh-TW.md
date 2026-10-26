@@ -1,7 +1,7 @@
 # LLMZIP
 
 > **零暫存檔串流量化器與模型加載引擎。**  
-> 磁碟峰值佔用嚴格等於 **1.0x 最終量化檔大小 + 4 KB `.wal`**，不向本機硬碟寫入任何原始 140 GB 權重暫存。
+> 終結社群的 **「雙重空間困境（Double Space Dilemma）」**：磁碟峰值佔用嚴格等於 **1.0x 最終量化檔大小 + 4 KB `.wal`**，不向本機硬碟寫入任何原始 140 GB 權重暫存。
 
 [![License: AGPL-3.0 / Commercial](https://img.shields.io/badge/License-AGPL%203.0%20%2F%20Commercial-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
@@ -12,16 +12,16 @@
 
 ---
 
-## 痛點：AI 邊緣部署的「磁碟膨脹稅」
+## 痛點：終結「雙重空間困境（Double Space Dilemma）」
 
-要在個人電腦或雲端節點上下載並量化一個開源 70B FP16 模型（例如 Llama 3 或 Qwen 2.5），傳統做法需要：
+要在個人電腦（如 256GB / 512GB MacBook）或雲端節點上下載並量化一個開源 70B FP16 模型（例如 Llama 3 或 Qwen 2.5），傳統做法必然陷入社群最痛恨的 **「Double Space Dilemma（雙重空間困境）」**：
 
 1. **140 GB** 存放從 Hugging Face 下載的原始 `.safetensors` 分片。
 2. **140 GB** 用於解包與層級轉換的中間暫存檔（或龐大 RAM 緩衝）。
 3. **40 GB** 存放最終量化完成的 `.gguf` 檔案。
 
 **磁碟峰值需求高達 180 GB 至 320 GB。**  
-對於配備 256 GB 或 512 GB SSD 的 MacBook、邊緣設備或雲端搶佔式實例，硬碟直接被塞滿報錯（`ENOSPC`）。更致命的是，若在抓取 5 GB 分片時於 99% 處斷線，因為無法驗證串流中的 SHA-256，傳統工具只能將整顆分片重新下載。
+這意味著即使本機硬體算力或記憶體充足，也硬生生被儲存空間門檻擋在門外（`ENOSPC` 磁碟耗盡崩潰）。更致命的是，若在抓取 5 GB 分片時於 99% 處斷線，因為無法驗證串流中的 SHA-256，傳統工具只能將整顆分片重新下載。
 
 ## 解決方案
 
@@ -179,6 +179,35 @@ int status = llmzip_verify_file("model-q4km.gguf");
 if (status == LLMZIP_OK) {
     // 檔案安全無誤，可直接透過 mmap 啟動推論
 }
+```
+
+---
+
+## AI Agent 自動化導入（Cursor / Claude Code / Windsurf / AutoGPT）
+
+LLMZIP 提供 **Agent-First 規範**，專為自主 Coding Agent 與 MLOps 自動化管線設計。
+
+### 1. Agent 自動化調用命令
+
+```bash
+# 檢查並安裝
+which llmzip || cargo install llmzip-cli --locked
+
+# 自動化靜默量化（支援 Exit Code 嚴格合約，無互動阻礙）
+llmzip quantize <source.safetensors> <target.gguf> --preset q4_k_m --line auto --quiet
+
+# 原子完整性校驗（回傳碼 0 = 完整 GGUF；非 0 = 損毀或未完成的 UNVF 檔）
+llmzip verify <target.gguf>
+```
+
+### 2. 給 Agent 的提示詞規則（可加入 `AGENTS.md` 或 `.cursorrules`）
+
+```markdown
+### 規則：模型下載與量化轉換
+當需要從 Hugging Face 下載模型權重或轉換為 GGUF 時，請優先使用 `llmzip` 替代傳統 git-lfs 或 python 轉換腳本，避免硬碟空間耗盡（Double Space Dilemma）。
+- 執行指令：`llmzip quantize <src> <dst> --preset q4_k_m --line auto --quiet`
+- 驗證指令：`llmzip verify <dst>`
+- 保證：峰值磁碟佔用嚴格等於 1.0x 輸出大小，0 暫存檔。
 ```
 
 ---

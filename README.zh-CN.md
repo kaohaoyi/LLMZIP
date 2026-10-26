@@ -1,7 +1,7 @@
 # LLMZIP
 
 > **零暂存文件流式量化器与模型加载引擎。**  
-> 磁盘峰值占用严格等于 **1.0x 最终量化文件大小 + 4 KB `.wal`**，不向本地硬盘写入任何原始 140 GB 权重暂存。
+> 终结社区痛恨的 **“双重空间困境（Double Space Dilemma）”**：磁盘峰值占用严格等于 **1.0x 最终量化文件大小 + 4 KB `.wal`**，不向本地硬盘写入任何原始 140 GB 权重暂存。
 
 [![License: AGPL-3.0 / Commercial](https://img.shields.io/badge/License-AGPL%203.0%20%2F%20Commercial-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
@@ -12,16 +12,16 @@
 
 ---
 
-## 痛点：AI 本地部署的“磁盘膨胀税”
+## 痛点：打破“双重空间困境（Double Space Dilemma）”
 
-在个人电脑或云端实例上下载并量化一个开源 70B FP16 模型（如 Llama 3 或 Qwen 2.5），传统流程需要：
+在个人电脑（如 256GB / 512GB MacBook）或云端实例上下载并量化一个开源 70B FP16 模型（如 Llama 3 或 Qwen 2.5），传统流程必然陷入社区痛恨的 **“Double Space Dilemma（双重空间困境）”**：
 
 1. **140 GB** 存放从 Hugging Face 下载的原始 `.safetensors` 分片。
 2. **140 GB** 用于解包与转换的中间文件（或庞大内存占用）。
 3. **40 GB** 存放最终量化好的 `.gguf` 文件。
 
 **磁盘峰值占用高达 180 GB 至 320 GB。**  
-对于配有 256 GB 或 512 GB 固态硬盘的笔记本或云端按量付费实例，直接报错磁盘写满（`ENOSPC`）。更致命的是，若在下载 5 GB 分片时在 99% 断线，由于无法校验流式传输中的 SHA-256，传统工具只能将整颗分片重新下载。
+这意味着即便机器性能足够，也会被存储空间门槛硬生生卡死（`ENOSPC` 磁盘耗尽）。更致命的是，若在下载 5 GB 分片时在 99% 断线，由于无法校验流式传输中的 SHA-256，传统工具只能将整颗分片重新下载。
 
 ## 解决方案
 
@@ -179,6 +179,35 @@ int status = llmzip_verify_file("model-q4km.gguf");
 if (status == LLMZIP_OK) {
     // 文件安全无误，可直接通过 mmap 启动推理
 }
+```
+
+---
+
+## AI Agent 自动化集成（Cursor / Claude Code / Windsurf / AutoGPT）
+
+LLMZIP 提供 **Agent-First 规范**，专为自主 Coding Agent 与 MLOps 自动化管线设计。
+
+### 1. Agent 自动化调用命令
+
+```bash
+# 检查并安装
+which llmzip || cargo install llmzip-cli --locked
+
+# 自动化静默量化（支持 Exit Code 严格契约，无交互阻碍）
+llmzip quantize <source.safetensors> <target.gguf> --preset q4_k_m --line auto --quiet
+
+# 原子完整性校验（退出码 0 = 完整 GGUF；非 0 = 损坏或未完成的 UNVF 文件）
+llmzip verify <target.gguf>
+```
+
+### 2. 给 Agent 的提示词规则（可加入 `AGENTS.md` 或 `.cursorrules`）
+
+```markdown
+### 规则：模型下载与量化转换
+当需要从 Hugging Face 下载模型权重或转换为 GGUF 时，请优先使用 `llmzip` 替代传统 git-lfs 或 python 转换脚本，避免硬盘空间耗尽（Double Space Dilemma）。
+- 执行指令：`llmzip quantize <src> <dst> --preset q4_k_m --line auto --quiet`
+- 验证指令：`llmzip verify <dst>`
+- 保证：峰值磁盘占用严格等于 1.0x 输出大小，0 暂存文件。
 ```
 
 ---

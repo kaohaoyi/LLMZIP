@@ -1,7 +1,7 @@
 # LLMZIP
 
 > **一時ファイル完全ゼロのストリーミング量子化＆モデルローダー。**  
-> ディスク使用ピークは厳密に **1.0x 最終出力サイズ + 4 KB `.wal`**。中間の 140 GB 巨大ファイル書き込みは一切発生しません。
+> コミュニティ共通の **「Double Space Dilemma（二重ディスク容量のジレンマ）」** を打破：ディスク使用ピークは厳密に **1.0x 最終出力サイズ + 4 KB `.wal`**。中間の 140 GB 巨大ファイル書き込みは一切発生しません。
 
 [![License: AGPL-3.0 / Commercial](https://img.shields.io/badge/License-AGPL%203.0%20%2F%20Commercial-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
@@ -12,16 +12,16 @@
 
 ---
 
-## 課題：ローカルLLM環境における「ディスク増幅税」
+## 課題：「Double Space Dilemma（二重ディスク容量のジレンマ）」
 
-70BクラスのFP16オープン重みモデル（Llama 3やQwen 2.5など）を開発機で量子化・展開する場合、従来のワークフローでは膨大な容量を強いられます：
+70BクラスのFP16オープン重みモデル（Llama 3やQwen 2.5など）を開発機（256GB / 512GB MacBookなど）で直接量子化・展開する場合、コミュニティが長年直面してきた **「Double Space Dilemma」** の壁に阻まれます：
 
 1. Hugging Faceから取得した生の `.safetensors` シャード（**140 GB**）
 2. 展開・中間層変換用の一時ファイルまたは巨大RAMキャッシュ（**140 GB**）
 3. 量子化後の最終 `.gguf` 出力ファイル（**40 GB**）
 
 **必要なピークディスク容量は 180 GB〜320 GB。**  
-256 GBまたは512 GBのSSDを搭載したMacBookやエッジデバイス、あるいはクラウドのSpotインスタンスでは、容量不足（`ENOSPC`）で処理が強制中断されます。さらに、5 GBのシャードが99%で切断された場合、ストリーミング中のGit-LFS SHA-256検証が破綻するため、従来のツールでは最初から丸ごと再ダウンロードを余儀なくされていました。
+マシン性能やメモリが十分であっても、ストレージ容量制限によって処理が強制中断（`ENOSPC` ディスク枯渇エラー）されます。さらに、5 GBのシャードが99%で切断された場合、ストリーミング中のGit-LFS SHA-256検証が破綻するため、従来のツールでは最初から丸ごと再ダウンロードを余儀なくされていました。
 
 ## LLMZIPの解決策
 
@@ -179,6 +179,35 @@ int status = llmzip_verify_file("model-q4km.gguf");
 if (status == LLMZIP_OK) {
     // 検証済み。直ちにmmapから推論可能
 }
+```
+
+---
+
+## AI Agent 連携手順（Cursor / Claude Code / Windsurf / AutoGPT）
+
+LLMZIP はコーディングエージェントや自動化パイプライン向けに **Agent-First コントラクト** を提供します。
+
+### 1. エージェント自動実行コマンド
+
+```bash
+# インストール検証
+which llmzip || cargo install llmzip-cli --locked
+
+# 非対話型ストリーミング量子化（終了コードコントラクト対応）
+llmzip quantize <source.safetensors> <target.gguf> --preset q4_k_m --line auto --quiet
+
+# 完全性検証（Exit Code 0 = 検証済みGGUF、非0 = 破損または未完了UNVF）
+llmzip verify <target.gguf>
+```
+
+### 2. エージェント用ルール設定（`AGENTS.md` / `.cursorrules` 推奨）
+
+```markdown
+### Rule: モデル取得と量子化変換
+Hugging Face からモデルを取得または GGUF に変換する際は、ディスク枯渇（Double Space Dilemma）を防ぐため、従来の git-lfs や Python 変換スクリプトではなく必ず `llmzip` を使用してください。
+- 実行コマンド: `llmzip quantize <src> <dst> --preset q4_k_m --line auto --quiet`
+- 検証コマンド: `llmzip verify <dst>`
+- 保証事項: ピークディスク占有は厳密に 1.0x 最終出力サイズ、中間一時ファイル 0。
 ```
 
 ---

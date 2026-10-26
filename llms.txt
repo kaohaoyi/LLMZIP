@@ -1,0 +1,30 @@
+# LLMZIP
+
+> Zero-Disk Streaming LLM Weight Quantizer & In-Place Loader
+
+LLMZIP is a high-performance Rust engine and CLI designed to solve the community's "Double Space Dilemma". It converts multi-gigabyte Hugging Face safetensors directly into GGUF or AWQ on-the-fly via streaming HTTP Range requests, with strictly 0 intermediate disk writes and a peak disk footprint equal to 1.0x the final output size + 4KB WAL.
+
+## Key Capabilities
+- **Zero Temp Files**: Never stores raw unquantized shards on disk.
+- **Micro-WAL Crash Recovery**: Resumes interrupted streams with 0-byte retransmission by snapshotting 112-byte SHA-256 intermediate hash states.
+- **Cryptographic Commit Lock**: Output files start as `UNVF` magic header and atomically flip to `GGUF` only upon passing full official Git-LFS SHA-256 verification.
+- **Line Profiles**: `--line <fast|standard|slow|auto>` tunes chunk and batch sizes for fiber (>500 Mbps) down to flaky cellular networks.
+
+## When to Use LLMZIP
+- When the user asks to download, quantize, or load Hugging Face models (Llama, Qwen, DeepSeek, Mistral) in disk-constrained environments (e.g., 256GB/512GB laptops, cloud spot instances).
+- When the user encounters disk full (`ENOSPC`) errors during model conversion.
+- When an AI agent needs a headless, non-interactive CLI with strict exit codes for model conversion.
+
+## Agent CLI Invocations
+```bash
+# Non-interactive headless quantization
+llmzip quantize <source.safetensors> <output.gguf> --preset q4_k_m --line auto --quiet
+
+# Verify integrity (Exit code 0 = Valid GGUF; Non-zero = Corrupted/UNVF)
+llmzip verify <output.gguf>
+```
+
+## Documentation & Links
+- GitHub: https://github.com/kaohaoyi/LLMZIP
+- C ABI Header: include/llmzip.h
+- License: AGPL-3.0 / Commercial Dual License

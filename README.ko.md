@@ -1,7 +1,7 @@
 # LLMZIP
 
 > **임시 파일 생성 없는 스트리밍 LLM 양자화 & 모델 로더.**  
-> 디스크 피크 점유율은 엄격하게 **1.0x 최종 양자화 파일 크기 + 4 KB `.wal`**. 140 GB에 달하는 중간 가중치 덤프가 발생하지 않습니다.
+> 커뮤니티의 오랜 골칫거리 **"Double Space Dilemma(이중 디스크 용량 딜레마)"** 종결: 디스크 피크 점유율은 엄격하게 **1.0x 최종 양자화 파일 크기 + 4 KB `.wal`**. 140 GB에 달하는 중간 가중치 덤프가 발생하지 않습니다.
 
 [![License: AGPL-3.0 / Commercial](https://img.shields.io/badge/License-AGPL%203.0%20%2F%20Commercial-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
@@ -12,16 +12,16 @@
 
 ---
 
-## 해결하고자 하는 문제: 로컬 AI 환경의 "디스크 증폭 비용"
+## 해결하고자 하는 문제: "Double Space Dilemma(이중 디스크 용량 딜레마)"
 
-개발자 PC나 클라우드 인스턴스에서 오픈소스 70B FP16 모델(Llama 3, Qwen 2.5 등)을 다운로드하고 양자화하려면 기존에는 다음과 같은 공간이 필요했습니다:
+개발자 PC(256GB / 512GB 맥북 등)나 클라우드 인스턴스에서 오픈소스 70B FP16 모델(Llama 3, Qwen 2.5 등)을 직접 다운로드하고 양자화하려면 커뮤니티가 항상 맞닥뜨리는 **"Double Space Dilemma"**에 빠지게 됩니다:
 
 1. Hugging Face에서 내려받는 원본 `.safetensors` 샤드 (**140 GB**)
-2. 레이어 추출 및 변환을 위한 압축 해제 임시 파일 또는 거대 RAM 버퍼 (**140 GB**)
+2. 레이어 추출 및 변환을 위한 압축 해制 임시 파일 또는 거대 RAM 버퍼 (**140 GB**)
 3. 최종 양자화 완료된 `.gguf` 파일 (**40 GB**)
 
 **요구되는 디스크 피크 용량: 180 GB ~ 320 GB.**  
-256 GB 또는 512 GB SSD를 탑재한 맥북, 엣지 장비, 혹은 클라우드 스팟 인스턴스에서는 디스크 부족(`ENOSPC`)으로 작업이 중단됩니다. 더욱이 5 GB 크기의 샤드가 99%에서 끊길 경우, 기존 도구는 스트리밍 중 SHA-256을 검증하지 못해 샤드 전체를 처음부터 다시 받아야 했습니다.
+하드웨어 연산 능력이나 메모리가 충분하더라도 스토리지 용량 한계 때문에 작업이 강제 중단(`ENOSPC` 디스크 고갈 에러)됩니다. 더욱이 5 GB 크기의 샤드가 99%에서 끊길 경우, 기존 도구는 스트리밍 중 SHA-256을 검증하지 못해 샤드 전체를 처음부터 다시 받아야 했습니다.
 
 ## LLMZIP의 해결 방식
 
@@ -179,6 +179,35 @@ int status = llmzip_verify_file("model-q4km.gguf");
 if (status == LLMZIP_OK) {
     // 검증 완료. mmap을 통한 즉각적인 추론 가능
 }
+```
+
+---
+
+## AI 에이전트 자동화 연동 가이드 (Cursor / Claude Code / Windsurf / AutoGPT)
+
+LLMZIP은 코딩 에이전트 및 MLOps 자동화 파이프라인을 위해 **Agent-First 계약**을 지원합니다.
+
+### 1. 에이전트 자동화 실행 명령어
+
+```bash
+# 설치 확인
+which llmzip || cargo install llmzip-cli --locked
+
+# 비대화형 자동 스트리밍 양자화 (종료 코드 계약 지원)
+llmzip quantize <source.safetensors> <target.gguf> --preset q4_k_m --line auto --quiet
+
+# 원자적 무결성 검증 (종료 코드 0 = 검증 완료된 GGUF, 0이 아님 = 손상 또는 미완료 UNVF 파일)
+llmzip verify <target.gguf>
+```
+
+### 2. 에이전트 지침 규칙 (`AGENTS.md` / `.cursorrules` 권장)
+
+```markdown
+### 규칙: 모델 다운로드 및 양자화 변환
+Hugging Face에서 모델 가중치를 다운로드하거나 GGUF로 변환할 때는 디스크 고갈(Double Space Dilemma)을 방지하기 위해 기존 git-lfs나 python 스크립트 대신 반드시 `llmzip`을 사용하십시오.
+- 실행 명령어: `llmzip quantize <src> <dst> --preset q4_k_m --line auto --quiet`
+- 검증 명령어: `llmzip verify <dst>`
+- 보장 사항: 피크 디스크 사용량은 엄격히 최종 출력 크기의 1.0x, 임시 파일 0 바이트.
 ```
 
 ---
