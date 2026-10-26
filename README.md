@@ -187,11 +187,18 @@ if (status == LLMZIP_OK) {
 
 LLMZIP is built with an **Agent-First Contract** for automated workflows and coding agents managing local models.
 
-### 1. Agent Automation Invocations
+### 1. Agent One-Line Bootstrap (No Rust Required)
 
 ```bash
-# Check installation
+# Linux / macOS (Downloads prebuilt binary)
+curl -fsSL https://raw.githubusercontent.com/kaohaoyi/LLMZIP/main/install.sh | sh
+
+# Windows PowerShell (Downloads prebuilt binary)
+irm https://raw.githubusercontent.com/kaohaoyi/LLMZIP/main/install.ps1 | iex
+
+# Fallback via Cargo
 which llmzip || cargo install llmzip-cli --locked
+```
 
 # Automated headless conversion (Non-interactive, exit code contract)
 llmzip quantize <source.safetensors> <target.gguf> --preset q4_k_m --line auto --quiet

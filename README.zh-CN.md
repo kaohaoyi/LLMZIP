@@ -187,11 +187,18 @@ if (status == LLMZIP_OK) {
 
 LLMZIP 提供 **Agent-First 规范**，专为自主 Coding Agent 与 MLOps 自动化管线设计。
 
-### 1. Agent 自动化调用命令
+### 1. Agent 一键无痛安装（无需 Rust 环境）
 
 ```bash
-# 检查并安装
+# Linux / macOS（自动检测平台并下载预编译二进制包）
+curl -fsSL https://raw.githubusercontent.com/kaohaoyi/LLMZIP/main/install.sh | sh
+
+# Windows PowerShell
+irm https://raw.githubusercontent.com/kaohaoyi/LLMZIP/main/install.ps1 | iex
+
+# Cargo 备用安装
 which llmzip || cargo install llmzip-cli --locked
+```
 
 # 自动化静默量化（支持 Exit Code 严格契约，无交互阻碍）
 llmzip quantize <source.safetensors> <target.gguf> --preset q4_k_m --line auto --quiet

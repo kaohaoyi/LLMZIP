@@ -187,11 +187,18 @@ if (status == LLMZIP_OK) {
 
 LLMZIP은 코딩 에이전트 및 MLOps 자동화 파이프라인을 위해 **Agent-First 계약**을 지원합니다.
 
-### 1. 에이전트 자동화 실행 명령어
+### 1. Agent 원라인 자동 설치 (Rust 환경 불필요)
 
 ```bash
-# 설치 확인
+# Linux / macOS (플랫폼 자동 감지 및 사전 빌드 바이너리 설치)
+curl -fsSL https://raw.githubusercontent.com/kaohaoyi/LLMZIP/main/install.sh | sh
+
+# Windows PowerShell
+irm https://raw.githubusercontent.com/kaohaoyi/LLMZIP/main/install.ps1 | iex
+
+# Cargo 대체 설치
 which llmzip || cargo install llmzip-cli --locked
+```
 
 # 비대화형 자동 스트리밍 양자화 (종료 코드 계약 지원)
 llmzip quantize <source.safetensors> <target.gguf> --preset q4_k_m --line auto --quiet

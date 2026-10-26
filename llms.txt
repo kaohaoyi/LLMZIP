@@ -15,8 +15,14 @@ LLMZIP is a high-performance Rust engine and CLI designed to solve the community
 - When the user encounters disk full (`ENOSPC`) errors during model conversion.
 - When an AI agent needs a headless, non-interactive CLI with strict exit codes for model conversion.
 
-## Agent CLI Invocations
+## Agent CLI Bootstrap & Invocations
 ```bash
+# Automated install (Linux / macOS)
+curl -fsSL https://raw.githubusercontent.com/kaohaoyi/LLMZIP/main/install.sh | sh
+
+# Automated install (Windows)
+irm https://raw.githubusercontent.com/kaohaoyi/LLMZIP/main/install.ps1 | iex
+
 # Non-interactive headless quantization
 llmzip quantize <source.safetensors> <output.gguf> --preset q4_k_m --line auto --quiet
 

@@ -187,11 +187,18 @@ if (status == LLMZIP_OK) {
 
 LLMZIP はコーディングエージェントや自動化パイプライン向けに **Agent-First コントラクト** を提供します。
 
-### 1. エージェント自動実行コマンド
+### 1. Agent ワンライナー自動インストール（Rust不要）
 
 ```bash
-# インストール検証
+# Linux / macOS（プラットフォーム自動判別・バイナリ取得）
+curl -fsSL https://raw.githubusercontent.com/kaohaoyi/LLMZIP/main/install.sh | sh
+
+# Windows PowerShell
+irm https://raw.githubusercontent.com/kaohaoyi/LLMZIP/main/install.ps1 | iex
+
+# Cargo フォールバック
 which llmzip || cargo install llmzip-cli --locked
+```
 
 # 非対話型ストリーミング量子化（終了コードコントラクト対応）
 llmzip quantize <source.safetensors> <target.gguf> --preset q4_k_m --line auto --quiet
