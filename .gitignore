@@ -7,6 +7,7 @@
 
 # --- Rust & Build Artifacts (DO NOT COMMIT) ---
 target/
+dist/
 **/*.rs.bk
 *.d
 *.rlib
