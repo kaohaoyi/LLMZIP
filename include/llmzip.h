@@ -6,7 +6,7 @@
  * and crash-recovery journal inspection. Designed for embedding into C/C++ runtimes
  * such as llama.cpp, Ollama, vLLM, TensorRT-LLM, and custom inference engines.
  *
- * @copyright Copyright (c) 2026 LLMZIP Contributors. Licensed under MIT OR Apache-2.0.
+ * @copyright Copyright (c) 2026 LLMZIP Contributors. Licensed under AGPL-3.0 or Commercial License.
  */
 
 #ifndef LLMZIP_H
