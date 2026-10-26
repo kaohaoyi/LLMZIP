@@ -205,9 +205,32 @@ llmzip quantize <source.safetensors> <target.gguf> --preset q4_k_m --line auto -
 
 # 原子完整性校驗（回傳碼 0 = 完整 GGUF；非 0 = 損毀或未完成的 UNVF 檔）
 llmzip verify <target.gguf>
+
+# 啟動原生 MCP 伺服器（供 Claude Desktop / Cursor / Zed 連線）
+llmzip mcp
 ```
 
-### 2. 給 Agent 的提示詞規則（可加入 `AGENTS.md` 或 `.cursorrules`）
+### 2. Model Context Protocol (MCP) 伺服器配置
+
+LLMZIP 原生內建零依賴 MCP 伺服器（`llmzip mcp`），可直接加入至 `claude_desktop_config.json` 或 Cursor MCP 設定：
+
+```json
+{
+  "mcpServers": {
+    "llmzip": {
+      "command": "llmzip",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+向 Agent 暴露 3 大安全沙箱工具：
+- `llmzip_inspect`：免載入快速預覽 SafeTensors 頭資訊與 GGUF 記憶體排程。
+- `llmzip_quantize`：受路徑穿越與磁碟安全防護保護的零暫存串流量化。
+- `llmzip_verify`：原子提交鎖完整性驗證。
+
+### 3. 給 Agent 的提示詞規則（可加入 `AGENTS.md` 或 `.cursorrules`）
 
 ```markdown
 ### 規則：模型下載與量化轉換

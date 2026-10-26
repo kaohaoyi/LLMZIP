@@ -46,7 +46,8 @@ fn print_usage() {
            inspect   <shard.safetensors>                      Inspect SafeTensors header & preview planned GGUF layout\n  \
            quantize  <input.safetensors> <output.gguf>       Stream and quantize into pre-allocated output file\n  \
            verify    <output.gguf>                            Verify cryptographic SHA-256 commit lock ('GGUF' vs 'UNVF')\n  \
-           wal-info  <output.gguf.wal>                        Inspect crash recovery journal (.wal) metrics\n\n\
+           wal-info  <output.gguf.wal>                        Inspect crash recovery journal (.wal) metrics\n  \
+            mcp                                                Start native Model Context Protocol (MCP) stdio server\n\n\
          Quantization Presets (--preset <name>):\n  \
            q4_k_m    GGUF Q4_K_M (Default: medium 4-bit, best quality/size balance for llama.cpp)\n  \
            q8_0      GGUF Q8_0   (8-bit high precision, virtually lossless)\n  \
@@ -604,9 +605,12 @@ fn main() {
                 process::exit(1);
             }
         }
+        "mcp" => {
+            llmzip_cli::mcp::run_mcp_server();
+        }
         unknown => {
             eprintln!(
-                "Error: Unknown command '{}'.\nAvailable commands: inspect, quantize, verify, wal-info.\nRun 'llmzip --help' for details.",
+                "Error: Unknown command '{}'.\nAvailable commands: inspect, quantize, verify, wal-info, mcp.\nRun 'llmzip --help' for details.",
                 unknown
             );
             process::exit(1);

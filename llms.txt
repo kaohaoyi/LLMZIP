@@ -23,11 +23,27 @@ curl -fsSL https://raw.githubusercontent.com/kaohaoyi/LLMZIP/main/install.sh | s
 # Automated install (Windows)
 irm https://raw.githubusercontent.com/kaohaoyi/LLMZIP/main/install.ps1 | iex
 
+# Run native MCP Server (for Claude Desktop, Cursor, Zed)
+llmzip mcp
+
 # Non-interactive headless quantization
 llmzip quantize <source.safetensors> <output.gguf> --preset q4_k_m --line auto --quiet
 
 # Verify integrity (Exit code 0 = Valid GGUF; Non-zero = Corrupted/UNVF)
 llmzip verify <output.gguf>
+```
+
+## Model Context Protocol (MCP) Configuration
+Add to `claude_desktop_config.json` or Cursor MCP settings:
+```json
+{
+  "mcpServers": {
+    "llmzip": {
+      "command": "llmzip",
+      "args": ["mcp"]
+    }
+  }
+}
 ```
 
 ## Documentation & Links

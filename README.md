@@ -205,9 +205,32 @@ llmzip quantize <source.safetensors> <target.gguf> --preset q4_k_m --line auto -
 
 # Atomic integrity check (Exit Code 0 = Verified GGUF, Non-Zero = Corrupted/UNVF)
 llmzip verify <target.gguf>
+
+# Run native MCP Server (for Claude Desktop, Cursor, Zed)
+llmzip mcp
 ```
 
-### 2. Recommended Agent Instruction (`AGENTS.md` / `.cursorrules`)
+### 2. Model Context Protocol (MCP) Server Setup
+
+LLMZIP includes a native, zero-dependency MCP server (`llmzip mcp`). Add to your `claude_desktop_config.json` or Cursor MCP settings:
+
+```json
+{
+  "mcpServers": {
+    "llmzip": {
+      "command": "llmzip",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Exposes three secure sandboxed tools:
+- `llmzip_inspect`: Preview SafeTensors header and target GGUF layout.
+- `llmzip_quantize`: Zero-disk streaming quantization with path-traversal guardrails.
+- `llmzip_verify`: Check cryptographic commit lock status.
+
+### 3. Recommended Agent Instruction (`AGENTS.md` / `.cursorrules`)
 
 Add the following rule to your project's agent prompt or `.cursorrules`:
 

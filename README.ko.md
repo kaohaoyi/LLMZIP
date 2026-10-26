@@ -205,9 +205,32 @@ llmzip quantize <source.safetensors> <target.gguf> --preset q4_k_m --line auto -
 
 # 원자적 무결성 검증 (종료 코드 0 = 검증 완료된 GGUF, 0이 아님 = 손상 또는 미완료 UNVF 파일)
 llmzip verify <target.gguf>
+
+# 네이티브 MCP 서버 실행 (Claude Desktop / Cursor / Zed 연동)
+llmzip mcp
 ```
 
-### 2. 에이전트 지침 규칙 (`AGENTS.md` / `.cursorrules` 권장)
+### 2. Model Context Protocol (MCP) 서버 설정
+
+LLMZIP은 외부 의존성이 전혀 없는 네이티브 MCP 서버(`llmzip mcp`)를 기본 탑재하고 있습니다. `claude_desktop_config.json` 또는 Cursor MCP 설정에 아래 내용을 추가하여 즉시 연동할 수 있습니다:
+
+```json
+{
+  "mcpServers": {
+    "llmzip": {
+      "command": "llmzip",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+에이전트에 노출되는 3대 샌드박스 보안 도구:
+- `llmzip_inspect`: SafeTensors 헤더 및 목표 GGUF 레이아웃 사전 분석.
+- `llmzip_quantize`: 경로 탐색(Path Traversal) 공격 방어 가드레일이 적용된 무임시파일 스트리밍 양자화.
+- `llmzip_verify`: 암호학적 커밋 락 검증.
+
+### 3. 에이전트 지침 규칙 (`AGENTS.md` / `.cursorrules` 권장)
 
 ```markdown
 ### 규칙: 모델 다운로드 및 양자화 변환
