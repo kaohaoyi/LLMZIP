@@ -67,6 +67,8 @@ LLMZIP 仅通过 HTTP Range 请求读取各分片前 8 字节长度与 JSON 头�
 | **中断续传开销** | 需重下整颗分片 (942 MiB) | **0 Bytes** (Micro-WAL 断点续传) | **不浪费多余流量** |
 | **模型完整性保证** | 转换完成后需手动比对 | **原子提交锁 (`UNVF` → `GGUF`)** | **残缺文件绝不流入推理环境** |
 
+*实测硬件环境：Intel Xeon E5-2690 v2 (10 核心 / 20 线程 @ 3.00GHz), 64GB RAM, Crucial P3 Plus 2TB NVMe SSD, Rayon SIMD。*
+
 ---
 
 ## 最低与推荐设备需求（硬件规格表）
@@ -88,7 +90,7 @@ LLMZIP 仅通过 HTTP Range 请求读取各分片前 8 字节长度与 JSON 头�
 ### 源码编译
 
 ```bash
-git clone https://github.com/your-org/llmzip.git
+git clone https://github.com/kaohaoyi/LLMZIP.git
 cd llmzip
 cargo build --release
 ```

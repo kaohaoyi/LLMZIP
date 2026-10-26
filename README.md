@@ -67,6 +67,8 @@ Tested on local machine with full 290 tensors from official Hugging Face snapsho
 | **Interrupted Resume Overhead** | Full shard restart (942 MiB) | **0 Bytes** (Micro-WAL HTTP 206) | **Zero wasted bandwidth** |
 | **Integrity Guarantee** | Manual hash check post-quant | **Cryptographic Lock (`UNVF` → `GGUF`)** | **Hardware-safe, zero corrupt files** |
 
+*Benchmark Environment: Intel Xeon E5-2690 v2 (10C/20T @ 3.00GHz), 64GB RAM, Crucial P3 Plus 2TB NVMe SSD, Rayon SIMD.*
+
 ---
 
 ## System Requirements (Minimum vs Recommended)
@@ -88,7 +90,7 @@ Thanks to the **Layer Ring Buffer** (`LayerRingBuffer`) and **Zero-Temp Streamin
 ### From Source
 
 ```bash
-git clone https://github.com/your-org/llmzip.git
+git clone https://github.com/kaohaoyi/LLMZIP.git
 cd llmzip
 cargo build --release
 ```

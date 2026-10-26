@@ -67,6 +67,8 @@ LLMZIP은 HTTP Range 요청을 통해 각 `.safetensors` 샤드의 앞부분 8�
 | **연결 끊김 복구 비용** | 전체 샤드 재다운로드 (942 MiB) | **0 Bytes** (Micro-WAL 이어받기) | **대역폭 낭비 방지** |
 | **무결성 보증** | 변환 후 수동 해시 검증 필요 | **암호학적 락 (`UNVF` → `GGUF`)** | **손상된 파일 유입 완전 차단** |
 
+*실측 하드웨어 환경: Intel Xeon E5-2690 v2 (10코어 / 20스레드 @ 3.00GHz), 64GB RAM, Crucial P3 Plus 2TB NVMe SSD, Rayon SIMD.*
+
 ---
 
 ## 최소 및 권장 시스템 요구사양 (하드웨어 규격표)
@@ -88,7 +90,7 @@ LLMZIP은 HTTP Range 요청을 통해 각 `.safetensors` 샤드의 앞부분 8�
 ### 소스코드 빌드
 
 ```bash
-git clone https://github.com/your-org/llmzip.git
+git clone https://github.com/kaohaoyi/LLMZIP.git
 cd llmzip
 cargo build --release
 ```

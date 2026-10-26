@@ -67,6 +67,8 @@ LLMZIPは、HTTP Rangeリクエストを用いて各 `.safetensors` シャード
 | **切断時の再DLコスト** | 全シャード再取得（942 MiB） | **0 Bytes**（Micro-WAL再開） | **通信帯域を浪費しない** |
 | **整合性保証** | 変換後の手動ハッシュ照合 | **暗号コミットロック (`UNVF` → `GGUF`)** | **不完全ファイルの混入ゼロ** |
 
+*実測環境：Intel Xeon E5-2690 v2 (10コア / 20スレッド @ 3.00GHz), 64GB RAM, Crucial P3 Plus 2TB NVMe SSD, Rayon SIMD。*
+
 ---
 
 ## 動作環境・システム要件（最低スペックと推奨構成）
@@ -88,7 +90,7 @@ LLMZIPは、HTTP Rangeリクエストを用いて各 `.safetensors` シャード
 ### ソースコードからビルド
 
 ```bash
-git clone https://github.com/your-org/llmzip.git
+git clone https://github.com/kaohaoyi/LLMZIP.git
 cd llmzip
 cargo build --release
 ```
