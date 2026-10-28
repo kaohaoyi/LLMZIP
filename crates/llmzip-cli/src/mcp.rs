@@ -47,9 +47,7 @@ pub fn handle_json_rpc_line(line: &str) -> Option<String> {
     let id = req.get("id").cloned();
 
     // 嚴格遵循 JSON-RPC 2.0：凡是無 id 的消息皆為 Notification，Server 絕不回傳任何響應
-    if id.is_none() {
-        return None;
-    }
+    id.as_ref()?;
 
     let method = match req.get("method").and_then(|m| m.as_str()) {
         Some(m) => m,
