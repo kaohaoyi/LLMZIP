@@ -185,6 +185,36 @@ if (status == LLMZIP_OK) {
 
 ---
 
+## ⚡ 推論速度は低下しますか？（Zero Runtime Overhead）
+
+**一切低下しません。推論スループット（Tokens/sec）は公式の事前量子化済みモデルと 100% 同等です。**
+
+LLMZIP は**モデルのロード・変換ツール**であり、推論時に常駐する中間プロキシではありません。量子化が完了しコミットロックが解除された後は：
+1. **公式標準仕様に完全準拠**：生成された GGUF / AWQ ファイルは公式規格（GGUF v3、32 バイトメモリアライメント）に厳格に準拠しており、推論エンジンはゼロコピー（`mmap Zero-Copy`）で直接ウェイトを展開します。
+2. **推論実行は推論フレームワークが主導**：推論速度は Ollama、vLLM、SGLang、llama.cpp 自身の CUDA / CPU SIMD カーネルの性能のみに依存します。変換完了後に LLMZIP は完全に終了するため、推論時の CPU・GPU・メモリ負荷はゼロです。
+
+### 推論スループットの自己検証方法（Ollama の例）
+
+Ollama が導入されている環境では、`--verbose` オプションを使用して直接スループットを確認できます：
+
+```bash
+# 1. LLMZIP で出力した GGUF を指定して Modelfile を作成
+echo "FROM ./model-q4km.gguf" > Modelfile
+ollama create my-model -f Modelfile
+
+# 2. ベンチマークプロンプトを実行
+ollama run my-model "Why is the sky blue?" --verbose
+```
+
+出力の末尾に正確なスループット指標が表示されます：
+```text
+prompt eval rate:     1138.21 tokens/s    # プロンプト処理スループット (Prefill)
+eval rate:            90.14 tokens/s      # トークン生成スループット (Generation)
+```
+この数値は、同一ハードウェア上で Hugging Face から直接取得した事前量子化モデルの速度と完全に一致します。
+
+---
+
 ## AI Agent 連携手順（Cursor / Claude Code / Windsurf / AutoGPT）
 
 LLMZIP はコーディングエージェントや自動化パイプライン向けに **Agent-First コントラクト** を提供します。

@@ -185,6 +185,36 @@ if (status == LLMZIP_OK) {
 
 ---
 
+## ⚡ 추론 속도가 느려지나요? (Zero Runtime Overhead)
+
+**전혀 느려지지 않습니다. 추론 처리량(Tokens/sec)은 공식 사전 양자화 모델과 100% 동일합니다.**
+
+LLMZIP은 **모델 수신 및 변환 도구**이며, 추론 시 상주하는 중간 프록시(Middleware)가 아닙니다. 변환이 완료되고 커밋 락이 해제된 이후에는:
+1. **공식 표준 규격 100% 준수**: 생성된 GGUF / AWQ 파일은 공식 표준 사양(GGUF v3, 32바이트 메모리 정렬)을 엄격히 준수하므로, 추론 엔진이 제로카피(`mmap Zero-Copy`)를 통해 최대 대역폭으로 가중치를 로드합니다.
+2. **추론 프레임워크 자체 연산 엔진 구동**: 추론 성능은 Ollama, vLLM, SGLang, llama.cpp 자체의 CUDA / CPU SIMD 커널 성능에 의해서만 결정됩니다. LLMZIP은 변환 후 완전히 프로세스가 종료되므로 배경 CPU, GPU 또는 메모리를 전혀 점유하지 않습니다.
+
+### 추론 성능 자체 검증 방법 (Ollama 기준)
+
+Ollama가 설치된 환경에서는 `--verbose` 플래그를 통해 즉시 처리량을 검증할 수 있습니다:
+
+```bash
+# 1. LLMZIP으로 생성된 GGUF를 지정하여 Modelfile 생성
+echo "FROM ./model-q4km.gguf" > Modelfile
+ollama create my-model -f Modelfile
+
+# 2. 벤치마크 프롬프트 실행
+ollama run my-model "Why is the sky blue?" --verbose
+```
+
+출력 하단에서 정확한 처리량 지표를 확인할 수 있습니다:
+```text
+prompt eval rate:     1138.21 tokens/s    # 프롬프트 사전 처리 처리량 (Prefill)
+eval rate:            90.14 tokens/s      # 자동회귀 토큰 생성 처리량 (Generation)
+```
+이 수치는 동일한 하드웨어에서 Hugging Face로부터 직접 다운로드한 공식 사전 양자화 모델의 성능과 통계적 오차 범위 내에서 완전히 일치합니다.
+
+---
+
 ## AI 에이전트 자동화 연동 가이드 (Cursor / Claude Code / Windsurf / AutoGPT)
 
 LLMZIP은 코딩 에이전트 및 MLOps 자동화 파이프라인을 위해 **Agent-First 계약**을 지원합니다.

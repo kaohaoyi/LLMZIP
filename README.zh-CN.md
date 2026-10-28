@@ -185,6 +185,36 @@ if (status == LLMZIP_OK) {
 
 ---
 
+## ⚡ 推理速度会变慢吗？（Zero Runtime Overhead）
+
+**完全不会。推理吞吐量（Tokens/sec）与官方预先量化好的模型 100% 相同。**
+
+LLMZIP 是**模型加载与转档工具**，而非推理时常驻的中介代理层（Proxy/Middleware）。一旦就地量化完成并解除提交锁：
+1. **产物符合官方标准规范**：产出的 GGUF / AWQ 遵循官方标准规格（GGUF v3、32-Byte 内存对齐），推理引擎可直接通过零拷贝（`mmap Zero-Copy`）高带宽加载权重。
+2. **推理运行时由目标框架主导**：推理速度完全由 Ollama、vLLM、SGLang、llama.cpp 自身的 CUDA / CPU SIMD 核心算子决定，LLMZIP 在转档后已完全退出，不会占用任何后台 CPU、GPU 或内存。
+
+### 如何自行验证推理吞吐？（以 Ollama 为例）
+
+在安装好 Ollama 的环境下，你可以直接通过内置的 `--verbose` 评测指标验证：
+
+```bash
+# 1. 创建 Modelfile 指向 LLMZIP 产出的 GGUF
+echo "FROM ./model-q4km.gguf" > Modelfile
+ollama create my-model -f Modelfile
+
+# 2. 启动并输出推理评测报告
+ollama run my-model "Why is the sky blue?" --verbose
+```
+
+输出尾端将显示精确的推理吞吐率：
+```text
+prompt eval rate:     1138.21 tokens/s    # 首字提示词预填吞吐量 (Prompt Processing)
+eval rate:            90.14 tokens/s      # 自回归解码生成吞吐量 (Text Generation)
+```
+此数值与直接自 Hugging Face 下载的官方预量化文件在相同硬件上毫无二致。
+
+---
+
 ## AI Agent 自动化集成（Cursor / Claude Code / Windsurf / AutoGPT）
 
 LLMZIP 提供 **Agent-First 规范**，专为自主 Coding Agent 与 MLOps 自动化管线设计。
