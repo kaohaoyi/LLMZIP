@@ -81,7 +81,7 @@ LLMZIP 僅需藉由 HTTP Range 讀取各分片前 8 位元組長度與 JSON 標�
 | **RAM (記憶體)** | **最低僅需 4 GB RAM**<br>• **即便量化 70B 大模型也僅需 4~8 GB RAM** | **8 GB ~ 16 GB RAM** | **嚴格鎖定單層**：緩衝池只容納當前 1 個 Transformer Layer，邊算邊釋放，記憶體永遠不爆。 |
 | **磁碟剩餘空間** | **嚴格等於「目標量化檔大小 + 100 MB 餘裕」**<br>• 0.5B 模型：**僅需 700 MB 空間**<br>• 8B 模型：**僅需 5.5 GB 空間**<br>• 70B 模型：**僅需 45 GB 空間** | **具備相應最終大小之 SSD** | **0 暫存檔技術**：原始 140GB 權重完全不落地，徹底打破傳統 250~320GB 的硬碟門檻。 |
 | **網路頻寬** | **10 Mbps 以上**（支援 HTTP Range `206`） | **100 Mbps ~ 1 Gbps 光纖** | 內建 `< 4KB` Micro-WAL，若弱網抖動斷線自動 0-Byte 接續，絕不浪費流量。 |
-| **作業系統** | • Windows 10 / 11 x64<br>• macOS 12+ (Apple Silicon / Intel)<br>• Linux (Ubuntu 18.04+, Debian, Arch, Alpine) | 同左 | 獨立二進位檔與標準 C ABI（無 Python/CUDA 龐大依賴環境）。 |
+| **作業系統** | • Windows 10 / 11 (x64 / ARM64 Snapdragon X)<br>• macOS 12+ (Apple Silicon / Intel)<br>• Linux (Ubuntu 18.04+, Debian, Arch, Alpine) | 同左 | 獨立二進位檔與標準 C ABI（無 Python/CUDA 龐大依賴環境）。 |
 
 ---
 

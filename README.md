@@ -81,7 +81,7 @@ Thanks to the **Layer Ring Buffer** (`LayerRingBuffer`) and **Zero-Temp Streamin
 | **RAM** | **4 GB RAM minimum**<br>• Quantizing 70B models requires only **4–8 GB RAM** | **8 GB – 16 GB RAM** | **Single-layer bounded**: RAM only holds 1 Transformer layer at any time, freeing weights as layers complete. |
 | **Disk Space** | **Target Output File Size + 100 MB buffer**<br>• 0.5B model: **~700 MB free**<br>• 8B model: **~5.5 GB free**<br>• 70B model: **~45 GB free** | **NVMe SSD matching output size** | **0 Temp Files**: Raw 140 GB weights never touch disk, breaking the 300 GB disk requirement forever. |
 | **Network** | **10 Mbps+** (HTTP Range `206` support) | **100 Mbps – 1 Gbps Fiber** | `< 4KB` Micro-WAL resumes on drops with 0 bytes re-downloaded. |
-| **Operating System** | • Windows 10/11 x64<br>• macOS 12+ (Apple Silicon / Intel)<br>• Linux (Ubuntu 18.04+, Debian, Arch, Alpine) | Same as minimum | Standalone binary & clean C ABI. Zero Python or CUDA dependency burdens. |
+| **Operating System** | • Windows 10/11 (x64 / ARM64 Snapdragon X)<br>• macOS 12+ (Apple Silicon / Intel)<br>• Linux (Ubuntu 18.04+, Debian, Arch, Alpine) | Same as minimum | Standalone binary & clean C ABI. Zero Python or CUDA dependency burdens. |
 
 ---
 
