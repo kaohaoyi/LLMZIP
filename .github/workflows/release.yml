@@ -53,6 +53,15 @@ jobs:
             cdylib: target/x86_64-pc-windows-msvc/release/llmzip_ffi.dll
             platform: windows
 
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            artifact: llmzip-v0.1.0-windows-arm64.zip
+            c_artifact: llmzip-c-api-v0.1.0-windows-arm64.zip
+            installer: llmzip-v0.1.0-windows-arm64-setup.exe
+            binary: target/aarch64-pc-windows-msvc/release/llmzip.exe
+            cdylib: target/aarch64-pc-windows-msvc/release/llmzip_ffi.dll
+            platform: windows
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -116,7 +125,7 @@ jobs:
           Compress-Archive -Path dist_staging_c\* -DestinationPath ${{ matrix.c_artifact }} -Force
           
           choco install nsis -y
-          makensis packaging\windows\installer.nsi
+          makensis /DOUT_FILE=${{ matrix.installer }} packaging\windows\installer.nsi
 
       - name: Upload artifacts to Release
         uses: softprops/action-gh-release@v2

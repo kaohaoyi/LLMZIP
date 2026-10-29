@@ -8,11 +8,21 @@ if (!(Test-Path $InstallDir)) {
     New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 }
 
-$ZipName = "llmzip-v0.1.0-windows-x64.zip"
+# Architecture detection
+$Arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLower()
+if ($Arch -eq "arm64" -or $env:PROCESSOR_ARCHITECTURE -eq "ARM64") {
+    $TargetArch = "arm64"
+    $ZipName = "llmzip-v0.1.0-windows-arm64.zip"
+} else {
+    $TargetArch = "x64"
+    $ZipName = "llmzip-v0.1.0-windows-x64.zip"
+}
+
 $Url = "https://github.com/$Repo/releases/download/v0.1.0/$ZipName"
 $TempZip = "$env:TEMP\llmzip.zip"
 
-Write-Host "[*] Downloading LLMZIP for Windows x64..." -ForegroundColor Cyan
+Write-Host "[*] Detected Windows Architecture: $TargetArch" -ForegroundColor Cyan
+Write-Host "[*] Downloading LLMZIP ($ZipName)..." -ForegroundColor Cyan
 
 try {
     Invoke-WebRequest -Uri $Url -OutFile $TempZip -UseBasicParsing

@@ -7,10 +7,14 @@ Unicode True
 !define PRODUCT_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\llmzip.exe"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
 
+!ifndef OUT_FILE
+  !define OUT_FILE "llmzip-v0.1.0-windows-x64-setup.exe"
+!endif
+
 SetCompressor /SOLID lzma
 
 Name "${PRODUCT_NAME} ${PRODUCT_VERSION}"
-OutFile "llmzip-v0.1.0-windows-x64-setup.exe"
+OutFile "${OUT_FILE}"
 InstallDir "$LOCALAPPDATA\Programs\LLMZIP"
 InstallDirRegKey HKCU "${PRODUCT_DIR_REGKEY}" ""
 ShowInstDetails show
