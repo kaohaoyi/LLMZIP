@@ -1,0 +1,62 @@
+name: Issue Triage & Auto-Responder
+
+on:
+  issues:
+    types: [opened, reopened]
+
+permissions:
+  issues: write
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Triage and Post First Responder Reply
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body = (issue.body || '').toLowerCase();
+            const title = (issue.title || '').toLowerCase();
+            const fullText = title + ' ' + body;
+            
+            let reply = '';
+            let labelsToAdd = [];
+            
+            if (fullText.includes('hardlink') || fullText.includes('symlink')) {
+              reply = `Hardlinks do not work across different filesystems/mounts, and identical models with different quants (e.g. Q4_K_M vs Q8_0) share 0 inode data. LLMZIP does semantic chunk deduplication on tensor blocks.\n\nCould you specify your environment and the exact target files?`;
+              labelsToAdd.push('question');
+            } else if (fullText.includes('s3') || fullText.includes('cloud') || fullText.includes('http')) {
+              reply = `Remote S3 / HTTP virtual mounting is currently scheduled for v0.2.0. v0.1.0 focuses on local NVMe deduplication and zero-copy mmap runtime.\n\nTracked in our roadmap.`;
+              labelsToAdd.push('enhancement');
+            } else if (fullText.includes('pip') || fullText.includes('python')) {
+              reply = `Python PyO3 bindings are planned for v0.1.1. In the meantime, you can interact with LLMZIP via the C ABI in \`include/llmzip.h\` or by calling \`llmzip-cli\` directly.`;
+              labelsToAdd.push('enhancement');
+            } else if (fullText.includes('crash') || fullText.includes('panic') || fullText.includes('error')) {
+              reply = `Acknowledged. To reproduce and isolate this:\n1. Your OS & architecture (e.g. Ubuntu 22.04 x64 / Windows ARM64)\n2. Exact command line executed\n3. Model format and size\n\nLooking into the stack trace.`;
+              labelsToAdd.push('bug');
+            } else {
+              reply = `Thanks for reporting. Looking into the chunk index and runtime behavior for this case.\n\nPlease share your OS, hardware specs, and command arguments so we can reproduce accurately.`;
+              labelsToAdd.push('triage');
+            }
+            
+            // Post comment
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: reply
+            });
+            
+            // Add labels if any
+            if (labelsToAdd.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: labelsToAdd
+              });
+            }
