@@ -101,6 +101,18 @@ cargo build --release
 
 ## 快速上手
 
+### 0. 一键从 Hugging Face 拉取至本地推理环境 (v0.3.0)
+无需手动下载数十 GB 权重，一键边载边转并自动载入推理工具：
+
+```bash
+# 一键下载、量化并注册至 Ollama（零暂存文件浪费）
+llmzip pull --target ollama Qwen/Qwen2.5-7B --preset q4_k_m
+ollama run qwen2.5:7b-q4_k_m
+
+# 原生 8 路并行连接直接自 Hugging Face 流式转出 GGUF
+llmzip quantize --hf Qwen/Qwen2.5-7B qwen-q4km.gguf --concurrency 8 --preset q4_k_m
+```
+
 ### 1. 检查远程或本地模型布局
 在不加载全量模型权重的前提下，毫秒级解析 SafeTensors 头部并预览字节偏移：
 

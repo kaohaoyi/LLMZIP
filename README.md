@@ -101,6 +101,18 @@ Binary will be located at `target/release/llmzip` (or `llmzip.exe` on Windows).
 
 ## Quickstart
 
+### 0. One-Shot Pull to Local Inference (v0.3.0)
+Directly stream from Hugging Face into your local Ollama / LM Studio / Jan setup without downloading raw files:
+
+```bash
+# Pull, quantize, and register to Ollama in one command (Zero Disk Waste)
+llmzip pull --target ollama Qwen/Qwen2.5-7B --preset q4_k_m
+ollama run qwen2.5:7b-q4_k_m
+
+# Parallel streaming directly from Hugging Face into a local GGUF
+llmzip quantize --hf Qwen/Qwen2.5-7B qwen-q4km.gguf --concurrency 8 --preset q4_k_m
+```
+
 ### 1. Inspect Remote or Local Shard Layout
 Inspect the SafeTensors header without allocating model weights, previewing the planned deterministic byte offsets:
 

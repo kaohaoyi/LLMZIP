@@ -101,6 +101,18 @@ cargo build --release
 
 ## 빠른 시작
 
+### 0. Hugging Face에서 로컬 추론 환경으로 원클릭 Pull (v0.3.0)
+수십 GB의 원본 파일을 다운로드하지 않고, 다운로드·양자화·추론 등록을 한 번에 실행:
+
+```bash
+# Ollama에 직접 풀, 양자화 및 Manifest 등록 (중간 디스크 낭비 0)
+llmzip pull --target ollama Qwen/Qwen2.5-7B --preset q4_k_m
+ollama run qwen2.5:7b-q4_k_m
+
+# Hugging Face에서 8개 병렬 연결로 직접 GGUF 스트리밍 양자화
+llmzip quantize --hf Qwen/Qwen2.5-7B qwen-q4km.gguf --concurrency 8 --preset q4_k_m
+```
+
 ### 1. 원격 또는 로컬 샤드 구조 확인
 가중치 전체를 로드하지 않고 SafeTensors 헤더를 수 밀리초 만에 파싱하여 바이트 배치 계획을 미리 확인합니다:
 

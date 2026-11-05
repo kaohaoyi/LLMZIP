@@ -101,6 +101,18 @@ cargo build --release
 
 ## クイックスタート
 
+### 0. Hugging Face から直接推論環境へワンクリック Pull (v0.3.0)
+数十 GB の生ウェイトをダウンロードすることなく、一括ダウンロード・量子化・推論登録を実行：
+
+```bash
+# Ollama への一括プル・量子化・Manifest登録（中間ディスク完全ゼロ）
+llmzip pull --target ollama Qwen/Qwen2.5-7B --preset q4_k_m
+ollama run qwen2.5:7b-q4_k_m
+
+# Hugging Face から 8並列 Range 接続で直接 GGUF へストリーミング変換
+llmzip quantize --hf Qwen/Qwen2.5-7B qwen-q4km.gguf --concurrency 8 --preset q4_k_m
+```
+
 ### 1. リモートまたはローカルの構造検査
 モデル重み全体を展開することなく、SafeTensorsヘッダーをミリ秒で解析して配置予定オフセットを確認：
 
