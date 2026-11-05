@@ -38,6 +38,11 @@ CONTEXT.md
 AGENTS.md
 test_sandbox_qa.ps1
 
+# --- Spec-Driven Development & Agent Skills (EXCLUDED FROM REPO) ---
+.github/skills/
+.specify/
+specs/[0-9]*/
+
 # --- Model & Checkpoint Binaries (DO NOT COMMIT) ---
 # Prevent accidental leak of multi-gigabyte weight files into Git LFS / history.
 *.gguf
