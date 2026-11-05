@@ -6,7 +6,7 @@
 [![License: AGPL-3.0 / Commercial](https://img.shields.io/badge/License-AGPL%203.0%20%2F%20Commercial-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 [![Version](https://img.shields.io/badge/version-0.3.0-green.svg)](Cargo.toml)
-[![Tests](https://img.shields.io/badge/tests-41%20passed-brightgreen.svg)](crates/llmzip-core/tests)
+[![Tests](https://img.shields.io/badge/tests-56%20passed-brightgreen.svg)](crates/llmzip-core/tests)
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md)
 
@@ -215,6 +215,75 @@ docker run --rm -v $(pwd):/workspace llmzip:latest \
 
 ---
 
+## 네이티브 Hugging Face 병렬 스트리밍 & 로컬 추론 플러그인 (v0.3.0)
+
+### 1. 네이티브 Hugging Face 병렬 Range 스트리밍 다운로드
+순수 Rust 네이티브 연결(Python 및 `git-lfs` 불필요). 다중 HTTP Range 연결을 통해 원격 모델 청크를 병렬 수신하며, 메모리 내에서 직접 SIMD 양자화 수행:
+
+```bash
+# 8개 병렬 연결, 16MB 청크 크기로 직접 GGUF 생성
+llmzip quantize --hf Qwen/Qwen2.5-7B qwen-q4km.gguf --concurrency 8 --chunk-size 16M --preset q4_k_m
+
+# Gated / 프라이빗 모델용 토큰 인증 지원 (토큰은 로그 및 디버그에서 안전하게 마스킹)
+HF_TOKEN="hf_xxx" llmzip quantize --hf meta-llama/Llama-3.1-8B-Instruct llama3-q4km.gguf
+```
+
+### 2. 로컬 추론 런타임 원클릭 Pull 플러그인 (`llmzip pull`)
+단일 명령으로 다운로드, 스트리밍 양자화, 로컬 추론 환경 자동 등록 완결 (중간 임시 파일 0바이트):
+
+```bash
+# Ollama Blob 저장소 (~/.ollama/models/blobs) 에 직접 작성 및 Manifest 자동 등록
+llmzip pull --target ollama Qwen/Qwen2.5-7B --preset q4_k_m
+ollama run qwen2.5:7b-q4_k_m
+
+# LM Studio 디렉토리 (~/.cache/lm-studio/models/) 로 직접 저장
+llmzip pull --target lm-studio meta-llama/Llama-3.1-8B-Instruct
+
+# Jan 디렉토리 (~/.jan/models/) 에 저장하고 호환 model.json 자동 생성
+llmzip pull --target jan mistralai/Mistral-7B-Instruct-v0.3
+```
+
+### 3. 투명한 Ollama 프록시 서버 모드 (`llmzip serve`)
+Ollama의 `/api/pull` 요청을 가로채 즉시 스트리밍 양자화를 진행하고, 나머지 요청은 네이티브 Ollama (11434) 로 투명하게 프록시:
+
+```bash
+llmzip serve --ollama-proxy --port 11435 --upstream-port 11434
+```
+
+### 4. llama.cpp 전용 명명된 파이프(Named Pipe / Unix FIFO) 스트리밍 출력
+Windows Named Pipe 및 Linux/macOS Unix FIFO 지원. 가중치를 다운로드 및 양자화하면서 디스크 쓰기 없이 `llama-cli` 로 직접 파이프 스트리밍:
+
+```bash
+# 터미널 1: 스트리밍 양자화 시작 후 파이프로 데이터 공급
+llmzip quantize --hf Qwen/Qwen2.5-7B pipe://llmzip_model --preset q4_k_m
+
+# 터미널 2: llama-cli 에서 파이프를 통해 직접 스트리밍 로드 및 추론
+llama-cli -m \\.\pipe\llmzip_model -p "안녕하세요!"  # Windows
+# 또는
+llama-cli -m /tmp/llmzip_model -p "안녕하세요!"       # Linux / macOS
+```
+
+### 5. DeepSeek MLA & Strata MoE 계층형 오프로드 연동
+최첨단 대규모 MoE 추론 프레임워크와의 네이티브 연동:
+
+```bash
+# 256개 라우팅 전문가 바이너리 청크 분할, Strata 계층형 추론 엔진에 즉시 호환
+llmzip pull --target strata deepseek-ai/DeepSeek-V3
+
+# MLA 투영 텐서를 보존하고 SGLang 호환 구성 파일 자동 생성
+llmzip pull --target sglang deepseek-ai/DeepSeek-V3
+```
+
+### 6. Python SDK `pull` 인터페이스
+```python
+import llmzip
+
+# 단일 명령으로 Ollama에 직접 pull 및 양자화
+llmzip.pull("Qwen/Qwen2.5-7B", target="ollama", preset="q4_k_m", concurrency=8)
+```
+
+---
+
 ## 지원 양자화 포맷 프리셋
 
 | 프리셋 이름 | 대상 포맷 | 블록 구성 | 특징 |
@@ -343,7 +412,7 @@ Hugging Face에서 모델 가중치를 다운로드하거나 GGUF로 변환할 �
   - SafeTensors 양방향 역양자화 익스포트 (`llmzip dequantize`) 및 멀티 샤드 인덱싱.
   - 공식 Python SDK (`llmzip-py` via PyO3), 처리 중 GIL 자동 해제 지원.
   - 공식 멀티스테이지 Docker 컨테이너 및 GitHub Actions 크로스 플랫폼 Wheel CI.
-- [ ] **v0.3.0**: Hugging Face 직접 연결 멀티파트 Range 스트리밍 클라이언트 및 추론 생태계 플러그인 (Ollama / llama.cpp / DeepSeek / Strata).
+- [x] **v0.3.0**: Hugging Face 직접 연결 멀티파트 Range 스트리밍 클라이언트 및 추론 생태계 플러그인 (Ollama / llama.cpp / DeepSeek / Strata).
   - Hugging Face 다중 연결 Range 스트리밍 엔진 (4~8개 비차단 연결 및 순차 재배열 버퍼).
   - 로컬 추론 원클릭 Pull 플러그인: Ollama (CLI 직접 호출 + Proxy 모드), LM Studio, Jan 자동 연동.
   - llama.cpp 전용 명명된 파이프 (Windows Named Pipe / Unix FIFO) 무디스크 실시간 스트리밍 추론.

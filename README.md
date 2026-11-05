@@ -6,7 +6,7 @@
 [![License: AGPL-3.0 / Commercial](https://img.shields.io/badge/License-AGPL%203.0%20%2F%20Commercial-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 [![Version](https://img.shields.io/badge/version-0.3.0-green.svg)](Cargo.toml)
-[![Tests](https://img.shields.io/badge/tests-41%20passed-brightgreen.svg)](crates/llmzip-core/tests)
+[![Tests](https://img.shields.io/badge/tests-56%20passed-brightgreen.svg)](crates/llmzip-core/tests)
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md)
 
@@ -215,6 +215,75 @@ docker run --rm -v $(pwd):/workspace llmzip:latest \
 
 ---
 
+## Native Hugging Face & Local Inference Plugins (v0.3.0)
+
+### 1. Native Hugging Face Parallel Range Streaming
+Directly stream and quantize remote models from Hugging Face with chunk-level parallel connections (pure Rust, no Python or git-lfs required):
+
+```bash
+# Multi-connection parallel streaming directly into quantized GGUF
+llmzip quantize --hf Qwen/Qwen2.5-7B qwen-q4km.gguf --concurrency 8 --chunk-size 16M --preset q4_k_m
+
+# Secure token support for gated / private repositories
+HF_TOKEN="hf_xxx" llmzip quantize --hf meta-llama/Llama-3.1-8B-Instruct llama3-q4km.gguf
+```
+
+### 2. Local Inference Direct Pull Plugins (`llmzip pull`)
+One-shot download, streaming quantization, and automatic injection into local runtimes with zero intermediate disk waste:
+
+```bash
+# Pull directly into Ollama blob storage (~/.ollama/models/blobs) and register Manifest
+llmzip pull --target ollama Qwen/Qwen2.5-7B --preset q4_k_m
+ollama run qwen2.5:7b-q4_k_m
+
+# Inject directly into LM Studio (~/.cache/lm-studio/models/)
+llmzip pull --target lm-studio meta-llama/Llama-3.1-8B-Instruct
+
+# Inject directly into Jan (~/.jan/models/) with generated model.json
+llmzip pull --target jan mistralai/Mistral-7B-Instruct-v0.3
+```
+
+### 3. Transparent Ollama Proxy Server (`llmzip serve`)
+Intercept Ollama `/api/pull` requests to stream-quantize on the fly while forwarding all other requests to native Ollama:
+
+```bash
+llmzip serve --ollama-proxy --port 11435 --upstream-port 11434
+```
+
+### 4. llama.cpp Named Pipe Streaming Output
+Zero-disk live inference streaming via Windows Named Pipe or Linux/macOS Unix FIFO:
+
+```bash
+# Terminal 1: Stream-quantize directly into a named pipe
+llmzip quantize --hf Qwen/Qwen2.5-7B pipe://llmzip_model --preset q4_k_m
+
+# Terminal 2: Run inference directly from the streaming pipe
+llama-cli -m \\.\pipe\llmzip_model -p "Hello world"  # Windows
+# or
+llama-cli -m /tmp/llmzip_model -p "Hello world"       # Linux / macOS
+```
+
+### 5. DeepSeek MLA & Strata MoE Tiered Offloading
+Native integration with frontier MoE inference frameworks:
+
+```bash
+# Partition 256 routed experts for Strata NVMe/RAM tiered offload engine
+llmzip pull --target strata deepseek-ai/DeepSeek-V3
+
+# Export SGLang-compatible DeepSeek MLA configuration and weights
+llmzip pull --target sglang deepseek-ai/DeepSeek-V3
+```
+
+### 6. Python SDK `pull` Support
+```python
+import llmzip
+
+# One-shot pull and quantize directly to Ollama
+llmzip.pull("Qwen/Qwen2.5-7B", target="ollama", preset="q4_k_m", concurrency=8)
+```
+
+---
+
 ## Supported Quantization Presets
 
 | Preset | Target Format | Elements / Block | Description |
@@ -345,7 +414,7 @@ When downloading Hugging Face models or converting weights to GGUF, ALWAYS use `
   - SafeTensors inverse dequantization export (`llmzip dequantize`) with multi-shard indexing.
   - Official Python SDK (`llmzip-py` via PyO3) with non-blocking GIL release.
   - Official multi-stage Docker container and multi-platform wheel CI matrix.
-- [ ] **v0.3.0**: Native Hugging Face parallel range client & inference ecosystem plugins (Ollama / llama.cpp / DeepSeek / Strata).
+- [x] **v0.3.0**: Native Hugging Face parallel range client & inference ecosystem plugins (Ollama / llama.cpp / DeepSeek / Strata).
   - Native Hugging Face multi-connection Range streaming engine (4–8 non-blocking connections with sequential reordering).
   - Local inference one-click pull plugins: Ollama (CLI direct + Proxy mode), LM Studio, and Jan auto-injection.
   - llama.cpp native Named Pipe / Unix FIFO streaming output for zero-temp-file live inference loading.

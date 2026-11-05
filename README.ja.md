@@ -6,7 +6,7 @@
 [![License: AGPL-3.0 / Commercial](https://img.shields.io/badge/License-AGPL%203.0%20%2F%20Commercial-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 [![Version](https://img.shields.io/badge/version-0.3.0-green.svg)](Cargo.toml)
-[![Tests](https://img.shields.io/badge/tests-41%20passed-brightgreen.svg)](crates/llmzip-core/tests)
+[![Tests](https://img.shields.io/badge/tests-56%20passed-brightgreen.svg)](crates/llmzip-core/tests)
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md)
 
@@ -215,6 +215,75 @@ docker run --rm -v $(pwd):/workspace llmzip:latest \
 
 ---
 
+## ネイティブ Hugging Face 並列ストリーミング & ローカル推論プラグイン (v0.3.0)
+
+### 1. ネイティブ Hugging Face 並列 Range ストリーミングダウンロード
+純粋な Rust ネイティブ実装（Python および `git-lfs` 不要）。複数の HTTP Range 接続でリモートモデルのチャンクを並列取得し、メモリ内で直接 SIMD 量子化を実行：
+
+```bash
+# 8並列・16MBチャンク指定で直接GGUFを生成
+llmzip quantize --hf Qwen/Qwen2.5-7B qwen-q4km.gguf --concurrency 8 --chunk-size 16M --preset q4_k_m
+
+# Gated / プライベートモデル向けトークン認証（トークンは厳格にマスク化）
+HF_TOKEN="hf_xxx" llmzip quantize --hf meta-llama/Llama-3.1-8B-Instruct llama3-q4km.gguf
+```
+
+### 2. ローカル推論ランタイム一括プルプラグイン (`llmzip pull`)
+ワンステップでダウンロード・ストリーミング量子化・ローカル推論環境への自動登録を完結（中間一時ファイル完全ゼロ）：
+
+```bash
+# Ollama Blob ストレージ (~/.ollama/models/blobs) に直接書き込み、Manifest を自動登録
+llmzip pull --target ollama Qwen/Qwen2.5-7B --preset q4_k_m
+ollama run qwen2.5:7b-q4_k_m
+
+# LM Studio ディレクトリ (~/.cache/lm-studio/models/) へ直接配置
+llmzip pull --target lm-studio meta-llama/Llama-3.1-8B-Instruct
+
+# Jan ディレクトリ (~/.jan/models/) へ配置し、互換 model.json を自動生成
+llmzip pull --target jan mistralai/Mistral-7B-Instruct-v0.3
+```
+
+### 3. 透過的 Ollama プロキシサーバーモード (`llmzip serve`)
+Ollama の `/api/pull` リクエストをインターセプトしてオンザフライ量子化を行い、その他のリクエストは元の Ollama (11434) に透過転送：
+
+```bash
+llmzip serve --ollama-proxy --port 11435 --upstream-port 11434
+```
+
+### 4. llama.cpp 専用名前付きパイプ（Named Pipe / Unix FIFO）ストリーミング出力
+Windows 名前付きパイプおよび Linux/macOS Unix FIFO に対応。ダウンロード・量子化しながら直接 `llama-cli` にストリーミング供給し、ディスク完全非保存で推論を実行：
+
+```bash
+# ターミナル 1: ストリーミング量子化を開始してパイプへ書き込み
+llmzip quantize --hf Qwen/Qwen2.5-7B pipe://llmzip_model --preset q4_k_m
+
+# ターミナル 2: llama-cli でパイプから直接ストリーミングロードして推論
+llama-cli -m \\.\pipe\llmzip_model -p "こんにちは！"  # Windows
+# または
+llama-cli -m /tmp/llmzip_model -p "こんにちは！"       # Linux / macOS
+```
+
+### 5. DeepSeek MLA & Strata MoE 階層型オフロード連携
+最先端の大規模 MoE 推論フレームワークとネイティブ連携：
+
+```bash
+# 256 のルーティングエキスパートを自動分割し、Strata NVMe/RAM 階層型推論エンジンに適合
+llmzip pull --target strata deepseek-ai/DeepSeek-V3
+
+# MLA 射影テンソルを保持し、SGLang 互換設定ファイルを生成
+llmzip pull --target sglang deepseek-ai/DeepSeek-V3
+```
+
+### 6. Python SDK `pull` インターフェース
+```python
+import llmzip
+
+# ワンショットで直接 Ollama へプル＆量子化
+llmzip.pull("Qwen/Qwen2.5-7B", target="ollama", preset="q4_k_m", concurrency=8)
+```
+
+---
+
 ## 対応量子化プリセット
 
 | プリセット名 | フォーマット | ブロック構成 | 特徴 |
@@ -343,7 +412,7 @@ Hugging Face からモデルを取得または GGUF に変換する際は、デ�
   - SafeTensors 逆量子化エクスポート (`llmzip dequantize`) とマルチシャードインデックス生成。
   - 公式 Python SDK (`llmzip-py` via PyO3)、処理中の GIL 自動解放対応。
   - 公式マルチステージ Docker コンテナおよび GitHub Actions マルチプラットフォーム Wheel CI。
-- [ ] **v0.3.0**：Hugging Face直接接続の並列Rangeダウンローダー＆推論エコシステムプラグイン（Ollama / llama.cpp / DeepSeek / Strata）。
+- [x] **v0.3.0**：Hugging Face直接接続の並列Rangeダウンローダー＆推論エコシステムプラグイン（Ollama / llama.cpp / DeepSeek / Strata）。
   - 原生 Hugging Face 多重並列 Range ストリーミングエンジン（4〜8路ノンブロッキング接続・順序保証バッファ）。
   - ローカル推論向けワンクリックPullプラグイン：Ollama（CLI直結＋Proxyサービスモード）、LM Studio、Jan 自動配置。
   - llama.cpp 専用名前付きパイプ（Windows Named Pipe / Unix FIFO）による完全オンメモリ直接推論。

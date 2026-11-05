@@ -6,7 +6,7 @@
 [![License: AGPL-3.0 / Commercial](https://img.shields.io/badge/License-AGPL%203.0%20%2F%20Commercial-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 [![Version](https://img.shields.io/badge/version-0.3.0-green.svg)](Cargo.toml)
-[![Tests](https://img.shields.io/badge/tests-41%20passed-brightgreen.svg)](crates/llmzip-core/tests)
+[![Tests](https://img.shields.io/badge/tests-56%20passed-brightgreen.svg)](crates/llmzip-core/tests)
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md)
 
@@ -215,6 +215,75 @@ docker run --rm -v $(pwd):/workspace llmzip:latest \
 
 ---
 
+## 原生 Hugging Face 多路並行串流與本地推論插件 (v0.3.0)
+
+### 1. 原生 Hugging Face 多路並行 Range 串流下載
+純 Rust 原生連線（免安裝 Python、免裝 `git-lfs`），支援多路 HTTP Range 併發拉取遠端模型分塊，邊下載邊進入記憶體 SIMD 量化管線：
+
+```bash
+# 指定 8 路並行、16MB 分塊粒度直出 GGUF
+llmzip quantize --hf Qwen/Qwen2.5-7B qwen-q4km.gguf --concurrency 8 --chunk-size 16M --preset q4_k_m
+
+# 支援私人/Gated 模型安全認證（Token 嚴格脫敏）
+HF_TOKEN="hf_xxx" llmzip quantize --hf meta-llama/Llama-3.1-8B-Instruct llama3-q4km.gguf
+```
+
+### 2. 本地推論框架一鍵拉取插件 (`llmzip pull`)
+一鍵拉取、串流量化並自動注入本機主流推論環境，全程零中間暫存檔落盤：
+
+```bash
+# 直接寫入 Ollama Blob 倉庫 (~/.ollama/models/blobs) 並自動註冊 Manifest
+llmzip pull --target ollama Qwen/Qwen2.5-7B --preset q4_k_m
+ollama run qwen2.5:7b-q4_k_m
+
+# 自動寫入 LM Studio 目錄 (~/.cache/lm-studio/models/)
+llmzip pull --target lm-studio meta-llama/Llama-3.1-8B-Instruct
+
+# 自動寫入 Jan 目錄 (~/.jan/models/) 並生成相容 model.json
+llmzip pull --target jan mistralai/Mistral-7B-Instruct-v0.3
+```
+
+### 3. 透明 Ollama 代理服務模式 (`llmzip serve`)
+攔截本機 Ollama 的 `/api/pull` 請求執行邊載邊轉，其餘請求透明轉發至原生 Ollama (11434)：
+
+```bash
+llmzip serve --ollama-proxy --port 11435 --upstream-port 11434
+```
+
+### 4. llama.cpp 專屬具名管道（Named Pipe / Unix FIFO）串流輸出
+支援 Windows 具名管道與 Linux/macOS Unix FIFO，模型邊載邊轉直通 `llama-cli`，磁碟零落盤推論：
+
+```bash
+# 終端機 1：啟動串流量化直灌具名管道
+llmzip quantize --hf Qwen/Qwen2.5-7B pipe://llmzip_model --preset q4_k_m
+
+# 終端機 2：llama-cli 直接自管道串流加載推論
+llama-cli -m \\.\pipe\llmzip_model -p "你好！"  # Windows
+# 或
+llama-cli -m /tmp/llmzip_model -p "你好！"       # Linux / macOS
+```
+
+### 5. DeepSeek MLA 與 Strata MoE 分層專家生態適配
+深度整合前沿大尺度 MoE 推論架構：
+
+```bash
+# 自動切分 256 路由專家二進制區塊，適配 Strata 記憶體/SSD 分層推論引擎
+llmzip pull --target strata deepseek-ai/DeepSeek-V3
+
+# 保留 MLA 投影張量並生成 SGLang 相容配置檔
+llmzip pull --target sglang deepseek-ai/DeepSeek-V3
+```
+
+### 6. Python SDK `pull` 介面
+```python
+import llmzip
+
+# 一鍵直拉並量化至 Ollama
+llmzip.pull("Qwen/Qwen2.5-7B", target="ollama", preset="q4_k_m", concurrency=8)
+```
+
+---
+
 ## 支援的量化預設規格
 
 | 預設名稱 | 目標格式 | 區塊元素數 | 規格特點 |
@@ -343,7 +412,7 @@ LLMZIP 原生內建零依賴 MCP 伺服器（`llmzip mcp`），可直接加入�
   - SafeTensors 雙向逆向反量化轉出 (`llmzip dequantize`) 與多分片索引生成。
   - 官方 Python SDK (`llmzip-py` via PyO3)，串流期間主動釋放 GIL。
   - 官方輕量多階段 Docker 映像檔與 GitHub Actions 多平臺 Wheel 自動建置。
-- [ ] **v0.3.0**：原生 Hugging Face 多路並行 Range 串流下載器與推論生態插件（Ollama / llama.cpp / DeepSeek / Strata）。
+- [x] **v0.3.0**：原生 Hugging Face 多路並行 Range 串流下載器與推論生態插件（Ollama / llama.cpp / DeepSeek / Strata）。
   - 原生 Hugging Face 多路並行 Range 串流下載器（4~8 路非阻塞連線，分塊循序重組）。
   - 本地推論框架一鍵拉取插件：支援 Ollama（CLI 直調 + Proxy 服務模式）、LM Studio、Jan 自動注入。
   - llama.cpp 專屬具名管道（Windows Named Pipe / Unix FIFO）零磁碟落盤即時推論。
