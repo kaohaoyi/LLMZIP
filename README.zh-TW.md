@@ -5,8 +5,8 @@
 
 [![License: AGPL-3.0 / Commercial](https://img.shields.io/badge/License-AGPL%203.0%20%2F%20Commercial-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
-[![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](Cargo.toml)
-[![Tests](https://img.shields.io/badge/tests-25%20passed-brightgreen.svg)](crates/llmzip-core/tests)
+[![Version](https://img.shields.io/badge/version-0.2.0-green.svg)](Cargo.toml)
+[![Tests](https://img.shields.io/badge/tests-41%20passed-brightgreen.svg)](crates/llmzip-core/tests)
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md)
 
@@ -153,6 +153,57 @@ llmzip wal-info model-q4km.gguf.wal
 | **`standard`** | 常規家用寬頻 (100–300 Mbps) | **256 KiB** | 均衡模式（每 4 張量） | 平衡吞吐量與中斷保護點 |
 | **`slow`** | 行動網路 / 弱網 / 邊緣終端 (<50 Mbps) | **64 KiB** | 即時同步（每 1 張量） | 確保續傳精確度，降低 CPU 佔用 |
 | **`auto`** | 自動評估 | 動態調整 | 動態調整 | 依輸入源自動選擇最優方案 |
+
+---
+
+## 雲端串流與生態系統擴展 (v0.2.0)
+
+### 1. S3 / Cloudflare R2 串流直傳
+直接串流量化字節至雲端物件儲存，零本機暫存檔，RAM 記憶體嚴格限制在 16MB 分段緩衝：
+
+```bash
+# 直接串流至 AWS S3
+llmzip quantize model.safetensors s3://my-bucket/models/llama-3-8b-q4km.gguf --preset q4_k_m
+
+# 串流至 Cloudflare R2 / MinIO
+llmzip quantize model.safetensors s3://r2-bucket/models/qwen-7b.gguf \
+  --preset q4_k_m \
+  --s3-endpoint https://<account_id>.r2.cloudflarestorage.com \
+  --s3-part-size 16MB
+```
+
+### 2. SafeTensors 雙向逆向轉出
+將量化後之 GGUF / AWQ 權重逆向反量化轉出為符合 HuggingFace 規範的分片 `.safetensors` 與 `model.safetensors.index.json`：
+
+```bash
+llmzip dequantize model-q4km.gguf ./hf_model_dir --dtype bf16 --max-shard-size 5GB
+```
+
+### 3. 官方 Python SDK (`llmzip-py`)
+內建 PyO3 高效綁定，在重度 SIMD 與串流時自動釋放 Python GIL：
+
+```bash
+pip install llmzip
+```
+
+```python
+import llmzip
+
+# 預檢模型結構與預估大小
+info = llmzip.inspect("model.safetensors")
+print(f"預估 Q4_K_M 尺寸: {info['predicted_sizes']['q4_k_m']} 位元組")
+
+# 串流量化並接收即時進度回調（GIL 自動釋放）
+def on_progress(event: llmzip.ProgressEvent):
+    print(f"進度: {event.bytes_processed}/{event.total_bytes} 位元組 ({event.speed_mbps:.1f} MB/s)")
+
+llmzip.quantize_stream(
+    "model.safetensors",
+    "model-q4km.gguf",
+    preset="q4_k_m",
+    progress_callback=on_progress,
+)
+```
 
 ---
 

@@ -5,8 +5,8 @@
 
 [![License: AGPL-3.0 / Commercial](https://img.shields.io/badge/License-AGPL%203.0%20%2F%20Commercial-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
-[![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](Cargo.toml)
-[![Tests](https://img.shields.io/badge/tests-25%20passed-brightgreen.svg)](crates/llmzip-core/tests)
+[![Version](https://img.shields.io/badge/version-0.2.0-green.svg)](Cargo.toml)
+[![Tests](https://img.shields.io/badge/tests-41%20passed-brightgreen.svg)](crates/llmzip-core/tests)
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md)
 
@@ -153,6 +153,57 @@ Streaming speed depends on balancing CPU SIMD execution with network stream arri
 | **`standard`** | Home Broadband (100–300 Mbps) | **256 KiB** | Balanced (4 tensors) | Default balanced mode |
 | **`slow`** | Mobile / Edge / Flaky (<50 Mbps) | **64 KiB** | Immediate (Every tensor) | Maximizes resume safety; throttles CPU |
 | **`auto`** | Dynamic detection | Auto-tuned | Auto-tuned | Automatically selects optimal profile |
+
+---
+
+## Cloud Streaming & Ecosystem (v0.2.0)
+
+### 1. S3 / Cloudflare R2 Streaming Direct-Write
+Directly stream and quantize weights into cloud object storage without creating any temporary files on local disk:
+
+```bash
+# Direct stream to AWS S3 (bounded 16MB RAM part buffer)
+llmzip quantize model.safetensors s3://my-bucket/models/llama-3-8b-q4km.gguf --preset q4_k_m
+
+# Direct stream to Cloudflare R2 / MinIO with custom endpoint
+llmzip quantize model.safetensors s3://r2-bucket/models/qwen-7b.gguf \
+  --preset q4_k_m \
+  --s3-endpoint https://<account_id>.r2.cloudflarestorage.com \
+  --s3-part-size 16MB
+```
+
+### 2. SafeTensors Inverse Dequantization Export
+Export quantized GGUF or AWQ weights back into HuggingFace-compatible sharded `.safetensors` files with `model.safetensors.index.json`:
+
+```bash
+llmzip dequantize model-q4km.gguf ./hf_model_dir --dtype bf16 --max-shard-size 5GB
+```
+
+### 3. Python SDK (`llmzip-py`)
+Official Python package with automatic GIL release during heavy SIMD and network streaming:
+
+```bash
+pip install llmzip
+```
+
+```python
+import llmzip
+
+# Inspect shard without loading weights
+info = llmzip.inspect("model.safetensors")
+print(f"Predicted Q4_K_M size: {info['predicted_sizes']['q4_k_m']} bytes")
+
+# Stream & quantize with real-time ProgressEvent callback (GIL released)
+def on_progress(event: llmzip.ProgressEvent):
+    print(f"Processed: {event.bytes_processed}/{event.total_bytes} bytes ({event.speed_mbps:.1f} MB/s)")
+
+llmzip.quantize_stream(
+    "model.safetensors",
+    "model-q4km.gguf",
+    preset="q4_k_m",
+    progress_callback=on_progress,
+)
+```
 
 ---
 

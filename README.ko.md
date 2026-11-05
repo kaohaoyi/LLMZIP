@@ -5,8 +5,8 @@
 
 [![License: AGPL-3.0 / Commercial](https://img.shields.io/badge/License-AGPL%203.0%20%2F%20Commercial-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
-[![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](Cargo.toml)
-[![Tests](https://img.shields.io/badge/tests-25%20passed-brightgreen.svg)](crates/llmzip-core/tests)
+[![Version](https://img.shields.io/badge/version-0.2.0-green.svg)](Cargo.toml)
+[![Tests](https://img.shields.io/badge/tests-41%20passed-brightgreen.svg)](crates/llmzip-core/tests)
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md)
 
@@ -153,6 +153,57 @@ llmzip wal-info model-q4km.gguf.wal
 | **`standard`** | 일반 가정용 브로드밴드 (100–300 Mbps) | **256 KiB** | 밸런스 모드 (4개 텐서마다) | 처리량과 복구 지점의 균형 |
 | **`slow`** | 모바일 / 엣지 / 불안정한 회선 (<50 Mbps) | **64 KiB** | 즉시 동기화 (텐서마다) | 복구 정확도 최우선, CPU 점유 완화 |
 | **`auto`** | 자동 감지 | 동적 설정 | 동적 설정 | 환경에 맞춰 최적 설정 자동 선택 |
+
+---
+
+## 클라우드 스트리밍 및 생태계 확장 (v0.2.0)
+
+### 1. S3 / Cloudflare R2 스트리밍 직접 쓰기
+로컬 임시 파일을 전혀 생성하지 않고, 클라우드 객체 스토리지로 직접 양자화 바이트 스트리밍 (RAM 버퍼는 16MB로 고정):
+
+```bash
+# AWS S3 직접 스트리밍
+llmzip quantize model.safetensors s3://my-bucket/models/llama-3-8b-q4km.gguf --preset q4_k_m
+
+# Cloudflare R2 / MinIO 직접 스트리밍
+llmzip quantize model.safetensors s3://r2-bucket/models/qwen-7b.gguf \
+  --preset q4_k_m \
+  --s3-endpoint https://<account_id>.r2.cloudflarestorage.com \
+  --s3-part-size 16MB
+```
+
+### 2. SafeTensors 역양자화 익스포트
+양자화된 GGUF / AWQ 가중치를 HuggingFace 표준 샤딩 `.safetensors` 및 `model.safetensors.index.json`으로 역변환:
+
+```bash
+llmzip dequantize model-q4km.gguf ./hf_model_dir --dtype bf16 --max-shard-size 5GB
+```
+
+### 3. 공식 Python SDK (`llmzip-py`)
+고부하 SIMD 연산 및 네트워크 스트리밍 중 Python GIL을 자동 해제하는 고성능 PyO3 바인딩:
+
+```bash
+pip install llmzip
+```
+
+```python
+import llmzip
+
+# 모델 구조 및 예상 크기 사전 점검
+info = llmzip.inspect("model.safetensors")
+print(f"예상 Q4_K_M 크기: {info['predicted_sizes']['q4_k_m']} 바이트")
+
+# 스트리밍 양자화 및 실시간 진행률 콜백 (GIL 자동 해제)
+def on_progress(event: llmzip.ProgressEvent):
+    print(f"진행률: {event.bytes_processed}/{event.total_bytes} 바이트 ({event.speed_mbps:.1f} MB/s)")
+
+llmzip.quantize_stream(
+    "model.safetensors",
+    "model-q4km.gguf",
+    preset="q4_k_m",
+    progress_callback=on_progress,
+)
+```
 
 ---
 

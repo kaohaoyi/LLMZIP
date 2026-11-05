@@ -1,3 +1,5 @@
+pub mod cloud;
+pub mod dequant;
 pub mod error;
 pub mod hasher;
 pub mod io_prealloc;

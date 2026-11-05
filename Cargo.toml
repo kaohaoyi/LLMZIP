@@ -4,10 +4,11 @@ members = [
     "crates/llmzip-core",
     "crates/llmzip-cli",
     "crates/llmzip-ffi",
+    "crates/llmzip-py",
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 license = "AGPL-3.0-or-later"
 authors = ["LLMZIP Contributors"]

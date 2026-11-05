@@ -1,0 +1,15 @@
+[package]
+name = "llmzip-py"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Python bindings for LLMZIP Zero-Temp-File Streaming Quantizer"
+
+[lib]
+name = "llmzip"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pyo3 = { version = "0.22", features = ["extension-module", "abi3-py39"] }
+llmzip-core = { workspace = true }
+serde_json.workspace = true

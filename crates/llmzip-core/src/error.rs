@@ -56,6 +56,21 @@ pub enum LlmZipError {
     },
     /// JSON parsing or metadata error.
     MetadataParse(String),
+    /// S3 or Cloud Object Storage error (e.g. upload part failure, bucket not found).
+    S3Error {
+        bucket: String,
+        key: String,
+        reason: String,
+    },
+    /// Cloud authentication expired or forbidden (403 Forbidden).
+    AuthExpired {
+        reason: String,
+    },
+    /// Dequantization or SafeTensors inverse export error.
+    DequantError {
+        tensor_name: String,
+        reason: String,
+    },
 }
 
 impl fmt::Display for LlmZipError {
@@ -127,6 +142,9 @@ impl fmt::Display for LlmZipError {
             ),
             Self::WalCorrupted { reason } => write!(f, "[WAL Recovery] {}", reason),
             Self::MetadataParse(msg) => write!(f, "[Metadata] {}", msg),
+            Self::S3Error { bucket, key, reason } => write!(f, "[S3 Error] s3://{}/{}: {}", bucket, key, reason),
+            Self::AuthExpired { reason } => write!(f, "[Auth Error] Credentials expired or unauthorized: {}", reason),
+            Self::DequantError { tensor_name, reason } => write!(f, "[Dequant Error] Tensor '{}': {}", tensor_name, reason),
         }
     }
 }

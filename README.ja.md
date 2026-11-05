@@ -5,8 +5,8 @@
 
 [![License: AGPL-3.0 / Commercial](https://img.shields.io/badge/License-AGPL%203.0%20%2F%20Commercial-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
-[![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](Cargo.toml)
-[![Tests](https://img.shields.io/badge/tests-25%20passed-brightgreen.svg)](crates/llmzip-core/tests)
+[![Version](https://img.shields.io/badge/version-0.2.0-green.svg)](Cargo.toml)
+[![Tests](https://img.shields.io/badge/tests-41%20passed-brightgreen.svg)](crates/llmzip-core/tests)
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md)
 
@@ -153,6 +153,57 @@ llmzip wal-info model-q4km.gguf.wal
 | **`standard`** | 一般的な家庭用ブロードバンド（100–300 Mbps）| **256 KiB** | バランス（4テンソル毎） | スループットと中断復帰性の両立 |
 | **`slow`** | モバイル / 狭帯域 / エッジ（<50 Mbps） | **64 KiB** | 即時同期（各テンソル毎） | 確実な復旧性を最優先、CPU負荷を抑制 |
 | **`auto`** | 自動判別 | 自動調整 | 自動調整 | 入力状況に応じて最適プロファイルを選択 |
+
+---
+
+## クラウドストリーミング＆エコシステム拡張 (v0.2.0)
+
+### 1. S3 / Cloudflare R2 ストリーミング直書き
+ローカル一時ファイルを一切作成せず、直接オブジェクトストレージへ量子化バイトをストリーミング（RAMバッファは16MBに固定）：
+
+```bash
+# AWS S3 への直接ストリーミング
+llmzip quantize model.safetensors s3://my-bucket/models/llama-3-8b-q4km.gguf --preset q4_k_m
+
+# Cloudflare R2 / MinIO への直接ストリーミング
+llmzip quantize model.safetensors s3://r2-bucket/models/qwen-7b.gguf \
+  --preset q4_k_m \
+  --s3-endpoint https://<account_id>.r2.cloudflarestorage.com \
+  --s3-part-size 16MB
+```
+
+### 2. SafeTensors 逆量子化エクスポート
+量子化済みの GGUF / AWQ モデルを、HuggingFace Transformers 互換の分割 `.safetensors` および `model.safetensors.index.json` へ逆変換：
+
+```bash
+llmzip dequantize model-q4km.gguf ./hf_model_dir --dtype bf16 --max-shard-size 5GB
+```
+
+### 3. 公式 Python SDK (`llmzip-py`)
+重い SIMD 処理やネットワークストリーミング時に Python GIL を自動解放する高速 PyO3 バインディング：
+
+```bash
+pip install llmzip
+```
+
+```python
+import llmzip
+
+# モデル構造と推定サイズの事前確認
+info = llmzip.inspect("model.safetensors")
+print(f"推定 Q4_K_M サイズ: {info['predicted_sizes']['q4_k_m']} bytes")
+
+# ストリーミング量子化とリアルタイム進捗コールバック（GIL自動解放）
+def on_progress(event: llmzip.ProgressEvent):
+    print(f"進捗: {event.bytes_processed}/{event.total_bytes} bytes ({event.speed_mbps:.1f} MB/s)")
+
+llmzip.quantize_stream(
+    "model.safetensors",
+    "model-q4km.gguf",
+    preset="q4_k_m",
+    progress_callback=on_progress,
+)
+```
 
 ---
 

@@ -9,6 +9,56 @@ pub const WAL_VERSION: u32 = 1;
 /// Fixed header size before the bitset: 8 (magic) + 4 (version) + 4 (shard_idx) + 8 (offset) + 112 (sha256_mid) + 4 (total_tensors) + 4 (crc32) = 144 bytes.
 pub const WAL_FIXED_HEADER_BYTES: usize = 144;
 
+/// S3 / Cloudflare R2 single part record for Micro-WAL upload tracking.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct S3PartRecord {
+    pub part_number: i32,
+    pub etag: String,
+    pub byte_range_start: u64,
+    pub byte_range_end: u64,
+    pub confirmed: bool,
+}
+
+/// S3 multipart upload state tracking record in Micro-WAL.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct S3UploadState {
+    pub upload_id: Option<String>,
+    pub bucket: String,
+    pub key: String,
+    pub parts: Vec<S3PartRecord>,
+}
+
+impl S3UploadState {
+    pub fn new(bucket: impl Into<String>, key: impl Into<String>, upload_id: Option<String>) -> Self {
+        Self {
+            upload_id,
+            bucket: bucket.into(),
+            key: key.into(),
+            parts: Vec::new(),
+        }
+    }
+
+    pub fn record_part(&mut self, part_number: i32, etag: impl Into<String>, start: u64, end: u64) {
+        self.parts.retain(|p| p.part_number != part_number);
+        self.parts.push(S3PartRecord {
+            part_number,
+            etag: etag.into(),
+            byte_range_start: start,
+            byte_range_end: end,
+            confirmed: true,
+        });
+        self.parts.sort_by_key(|p| p.part_number);
+    }
+
+    pub fn is_part_confirmed(&self, part_number: i32) -> bool {
+        self.parts.iter().any(|p| p.part_number == part_number && p.confirmed)
+    }
+
+    pub fn confirmed_bytes(&self) -> u64 {
+        self.parts.iter().map(|p| p.byte_range_end.saturating_sub(p.byte_range_start)).sum()
+    }
+}
+
 /// `< 4KB` Micro-Journal (`.wal`) state for Zero-Re-Download atomic crash recovery (Question 5).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MicroWal {

@@ -1,3 +1,8 @@
+use llmzip_core::cloud::{CloudCredentials, S3MultipartStreamer};
+use llmzip_core::dequant::{
+    export_safetensors_shards, load_and_dequantize_gguf, DequantDtype,
+};
+use llmzip_core::quant::gguf_simd::{decode_and_validate_upstream_to_f32, quantize_f32_slice};
 use llmzip_core::hasher::sha256_hex;
 use llmzip_core::layout::{
     build_deterministic_layout, QuantPreset, GGUF_MAGIC_UNVERIFIED, GGUF_MAGIC_VERIFIED,
@@ -11,7 +16,7 @@ use std::io::Read;
 use std::path::Path;
 use std::process;
 
-const VERSION: &str = "0.1.0";
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn format_bytes(bytes: u64) -> String {
     if bytes < 1024 {
@@ -98,6 +103,21 @@ fn print_quantize_help() {
            --arch <name>        Model architecture: llama (default) | mixtral\n\n\
          Example:\n  \
            llmzip quantize model.safetensors model-q4km.gguf --preset q4_k_m"
+    );
+}
+
+fn print_dequantize_help() {
+    println!(
+        "Usage: llmzip dequantize <input.gguf> <output_dir> [options]\n\
+         or:    llmzip dequantize --in <input.gguf> --out-dir <output_dir> [options]\n\n\
+         Dequantizes a GGUF / AWQ model into HuggingFace-compatible sharded SafeTensors\n\
+         files with model.safetensors.index.json without holding full model weights in RAM.\n\n\
+         Options:\n  \
+           --dtype <bf16|fp16|f32>   Output tensor precision (default: bf16)\n  \
+           --max-shard-size <size>   Maximum bytes per SafeTensors shard (default: 5GB)\n  \
+           -h, --help                Show help information\n\n\
+         Example:\n  \
+           llmzip dequantize model-q4km.gguf ./hf_out --dtype bf16 --max-shard-size 5GB"
     );
 }
 
@@ -349,6 +369,213 @@ fn cmd_quantize(
     Ok(())
 }
 
+fn parse_s3_part_size(val: &str) -> Result<usize, String> {
+    let lower = val.to_lowercase();
+    if lower.ends_with("mb") || lower.ends_with("mib") {
+        let num: usize = lower
+            .trim_end_matches("mb")
+            .trim_end_matches("mib")
+            .trim()
+            .parse()
+            .map_err(|_| format!("Invalid S3 part size '{}'", val))?;
+        Ok(num * 1024 * 1024)
+    } else {
+        val.parse::<usize>()
+            .map_err(|_| format!("Invalid S3 part size '{}'", val))
+    }
+}
+
+fn cmd_quantize_s3(
+    input_path: &Path,
+    s3_uri_str: &str,
+    s3_endpoint: Option<String>,
+    s3_part_size: Option<usize>,
+    preset: QuantPreset,
+    sanitize: bool,
+    arch: &str,
+    _line_profile: LineProfile,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if !input_path.exists() {
+        return Err(format!(
+            "Input file '{}' does not exist.\nTip: Check that the path is correct.",
+            input_path.display()
+        )
+        .into());
+    }
+
+    let shard_name = input_path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("model.safetensors");
+    let raw = fs::read(input_path).map_err(|e| {
+        format!(
+            "Failed to read input file '{}': {}",
+            input_path.display(),
+            e
+        )
+    })?;
+    if raw.len() < 8 {
+        return Err(format!(
+            "Input file '{}' is smaller than 8 bytes (truncated or corrupt).",
+            input_path.display()
+        )
+        .into());
+    }
+    let mut len_bytes = [0u8; 8];
+    len_bytes.copy_from_slice(&raw[0..8]);
+    let header_len = parse_and_validate_header_len(shard_name, len_bytes, raw.len() as u64)?;
+    let header_slice = raw[8..8 + (header_len as usize)].to_vec();
+    let expected_sha = sha256_hex(&raw);
+
+    let desc = ShardDescriptor {
+        shard_idx: 0,
+        shard_name: shard_name.to_string(),
+        total_file_size: raw.len() as u64,
+        header_len,
+        expected_sha256_hex: expected_sha,
+    };
+
+    println!("[1/4] Preflight: Parsing SafeTensors header and constructing VTAS...");
+    let vtas = build_virtual_tensor_space(vec![(desc, header_slice)], false, 8)?;
+
+    println!(
+        "[2/4] Layout: Generating deterministic byte layout for S3 direct-stream (Preset: {:?}, Arch: {})...",
+        preset, arch
+    );
+    let plan = build_deterministic_layout(&vtas, preset, arch)?;
+
+    println!(
+        "[3/4] S3 Streaming: Connecting to {} (Zero-Temp-File Direct-Write)...",
+        s3_uri_str
+    );
+
+    let mut creds = CloudCredentials::from_env();
+    if let Some(ep) = s3_endpoint {
+        if let Some(ref mut c) = creds {
+            c.endpoint_url = Some(ep);
+        } else {
+            creds = Some(CloudCredentials {
+                access_key_id: "anon".to_string(),
+                secret_access_key: "anon".to_string(),
+                region: "us-east-1".to_string(),
+                session_token: None,
+                endpoint_url: Some(ep),
+            });
+        }
+    }
+
+    let mut streamer = S3MultipartStreamer::new(s3_uri_str, creds.as_ref(), s3_part_size)?;
+
+    // 1. Write verified GGUF header and pad up to data_section_base_offset
+    let mut header_bytes = plan.unverified_header_bytes.clone();
+    header_bytes[0..4].copy_from_slice(&GGUF_MAGIC_VERIFIED);
+    if (header_bytes.len() as u64) < plan.data_section_base_offset {
+        header_bytes.resize(plan.data_section_base_offset as usize, 0u8);
+    }
+    streamer.write_chunk(&header_bytes)?;
+
+    let mut current_offset = plan.data_section_base_offset;
+    let mut committed = 0;
+
+    // 2. Stream and quantize each tensor in layout order
+    for tensor in &vtas.tensors {
+        let target = &plan.write_targets[tensor.tensor_id];
+
+        // Pad between tensors if aligned offset requires it
+        if target.file_write_offset > current_offset {
+            let pad_len = (target.file_write_offset - current_offset) as usize;
+            let pad = vec![0u8; pad_len];
+            streamer.write_chunk(&pad)?;
+            current_offset += pad_len as u64;
+        }
+
+        let slice_start = tensor.stream_abs_start as usize;
+        let slice_end = tensor.stream_abs_end as usize;
+        if slice_end > raw.len() {
+            return Err("Input file truncated before tensor end".into());
+        }
+
+        let raw_tensor_slice = &raw[slice_start..slice_end];
+        let f32_elements = decode_and_validate_upstream_to_f32(
+            &tensor.hf_name,
+            raw_tensor_slice,
+            tensor.dtype,
+            sanitize,
+        )?;
+
+        let q_bytes = quantize_f32_slice(&f32_elements, target.assigned_quant);
+        streamer.write_chunk(&q_bytes)?;
+        current_offset += q_bytes.len() as u64;
+        committed += 1;
+    }
+
+    println!("[4/4] Commit: Finalizing S3 Multipart Upload...");
+    let total_uploaded = streamer.complete()?;
+
+    println!(
+        "\n✓ Successfully streamed and committed {} tensors directly to '{}'\n  Uploaded Size: {}\n",
+        committed,
+        s3_uri_str,
+        format_bytes(total_uploaded),
+    );
+
+    Ok(())
+}
+
+fn parse_max_shard_size(val: &str) -> Result<u64, String> {
+    let lower = val.to_lowercase();
+    if lower.ends_with("gb") || lower.ends_with("gib") {
+        let num: u64 = lower
+            .trim_end_matches("gb")
+            .trim_end_matches("gib")
+            .trim()
+            .parse()
+            .map_err(|_| format!("Invalid shard size '{}'", val))?;
+        Ok(num * 1024 * 1024 * 1024)
+    } else if lower.ends_with("mb") || lower.ends_with("mib") {
+        let num: u64 = lower
+            .trim_end_matches("mb")
+            .trim_end_matches("mib")
+            .trim()
+            .parse()
+            .map_err(|_| format!("Invalid shard size '{}'", val))?;
+        Ok(num * 1024 * 1024)
+    } else {
+        val.parse::<u64>()
+            .map_err(|_| format!("Invalid shard size '{}'", val))
+    }
+}
+
+fn cmd_dequantize(
+    input_path: &Path,
+    out_dir: &Path,
+    dtype: DequantDtype,
+    max_shard_size: Option<u64>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if !input_path.exists() {
+        return Err(format!("Input file '{}' does not exist.", input_path.display()).into());
+    }
+
+    println!("[1/3] Reading GGUF file and parsing tensor directory: {}", input_path.display());
+    let export_tensors = load_and_dequantize_gguf(input_path, dtype)?;
+
+    println!(
+        "[2/3] Dequantized {} tensors into {:?}. Exporting sharded SafeTensors to {}...",
+        export_tensors.len(),
+        dtype,
+        out_dir.display()
+    );
+
+    let written = export_safetensors_shards(out_dir, export_tensors, max_shard_size)?;
+
+    println!("[3/3] Export complete! Generated {} files:", written.len());
+    for p in &written {
+        println!("  - {}", p.display());
+    }
+    println!("\n✓ Model is ready for HuggingFace Transformers loading.\n");
+    Ok(())
+}
+
 fn cmd_verify(output_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     if !output_path.exists() {
         return Err(format!(
@@ -505,6 +732,8 @@ fn main() {
             let mut sanitize = false;
             let mut arch = "llama".to_string();
             let mut line_profile = LineProfile::Auto;
+            let mut s3_endpoint: Option<String> = None;
+            let mut s3_part_size: Option<usize> = None;
             let mut i = 4;
 
             while i < args.len() {
@@ -530,6 +759,28 @@ fn main() {
                         }
                         match parse_line_profile(&args[i + 1]) {
                             Ok(lp) => line_profile = lp,
+                            Err(e) => {
+                                eprintln!("Error: {}", e);
+                                process::exit(1);
+                            }
+                        }
+                        i += 2;
+                    }
+                    "--s3-endpoint" => {
+                        if i + 1 >= args.len() {
+                            eprintln!("Error: '--s3-endpoint' requires a URL.");
+                            process::exit(1);
+                        }
+                        s3_endpoint = Some(args[i + 1].clone());
+                        i += 2;
+                    }
+                    "--s3-part-size" => {
+                        if i + 1 >= args.len() {
+                            eprintln!("Error: '--s3-part-size' requires a size value (e.g. 16MB).");
+                            process::exit(1);
+                        }
+                        match parse_s3_part_size(&args[i + 1]) {
+                            Ok(sz) => s3_part_size = Some(sz),
                             Err(e) => {
                                 eprintln!("Error: {}", e);
                                 process::exit(1);
@@ -563,13 +814,129 @@ fn main() {
                 }
             }
 
-            if let Err(e) = cmd_quantize(
-                Path::new(&args[2]),
-                Path::new(&args[3]),
-                preset,
-                sanitize,
-                &arch,
-                line_profile,
+            let res = if args[3].starts_with("s3://") {
+                cmd_quantize_s3(
+                    Path::new(&args[2]),
+                    &args[3],
+                    s3_endpoint,
+                    s3_part_size,
+                    preset,
+                    sanitize,
+                    &arch,
+                    line_profile,
+                )
+            } else {
+                cmd_quantize(
+                    Path::new(&args[2]),
+                    Path::new(&args[3]),
+                    preset,
+                    sanitize,
+                    &arch,
+                    line_profile,
+                )
+            };
+
+            if let Err(e) = res {
+                eprintln!("Error: {}", e);
+                process::exit(1);
+            }
+        }
+        "dequantize" => {
+            if args.len() < 3 || (args.len() >= 3 && (args[2] == "-h" || args[2] == "--help")) {
+                print_dequantize_help();
+                process::exit(if args.len() >= 3 && (args[2] == "-h" || args[2] == "--help") { 0 } else { 1 });
+            }
+
+            let mut input_path: Option<String> = None;
+            let mut out_dir: Option<String> = None;
+            let mut dtype = DequantDtype::BF16;
+            let mut max_shard_size: Option<u64> = None;
+
+            let mut i = 2;
+            let mut positional = Vec::new();
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--in" => {
+                        if i + 1 >= args.len() {
+                            eprintln!("Error: '--in' requires an input path.");
+                            process::exit(1);
+                        }
+                        input_path = Some(args[i + 1].clone());
+                        i += 2;
+                    }
+                    "--out-dir" => {
+                        if i + 1 >= args.len() {
+                            eprintln!("Error: '--out-dir' requires an output directory path.");
+                            process::exit(1);
+                        }
+                        out_dir = Some(args[i + 1].clone());
+                        i += 2;
+                    }
+                    "--dtype" => {
+                        if i + 1 >= args.len() {
+                            eprintln!("Error: '--dtype' requires a type (bf16, fp16, f32).");
+                            process::exit(1);
+                        }
+                        match DequantDtype::parse(&args[i + 1]) {
+                            Ok(dt) => dtype = dt,
+                            Err(e) => {
+                                eprintln!("Error: {}", e);
+                                process::exit(1);
+                            }
+                        }
+                        i += 2;
+                    }
+                    "--max-shard-size" => {
+                        if i + 1 >= args.len() {
+                            eprintln!("Error: '--max-shard-size' requires a size (e.g. 5GB).");
+                            process::exit(1);
+                        }
+                        match parse_max_shard_size(&args[i + 1]) {
+                            Ok(sz) => max_shard_size = Some(sz),
+                            Err(e) => {
+                                eprintln!("Error: {}", e);
+                                process::exit(1);
+                            }
+                        }
+                        i += 2;
+                    }
+                    "-h" | "--help" => {
+                        print_dequantize_help();
+                        process::exit(0);
+                    }
+                    other => {
+                        if other.starts_with('-') {
+                            eprintln!("Error: Unrecognized option '{}'", other);
+                            process::exit(1);
+                        } else {
+                            positional.push(args[i].clone());
+                            i += 1;
+                        }
+                    }
+                }
+            }
+
+            if input_path.is_none() && !positional.is_empty() {
+                input_path = Some(positional.remove(0));
+            }
+            if out_dir.is_none() && !positional.is_empty() {
+                out_dir = Some(positional.remove(0));
+            }
+
+            let input_str = input_path.unwrap_or_else(|| {
+                eprintln!("Error: Missing input GGUF file path.\nRun 'llmzip dequantize --help' for usage.");
+                process::exit(1);
+            });
+            let out_str = out_dir.unwrap_or_else(|| {
+                eprintln!("Error: Missing output directory path.\nRun 'llmzip dequantize --help' for usage.");
+                process::exit(1);
+            });
+
+            if let Err(e) = cmd_dequantize(
+                Path::new(&input_str),
+                Path::new(&out_str),
+                dtype,
+                max_shard_size,
             ) {
                 eprintln!("Error: {}", e);
                 process::exit(1);
