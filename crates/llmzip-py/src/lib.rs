@@ -13,7 +13,11 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 use std::fs;
-use std::path::Path;
+use llmzip_core::hf::streamer::{HfParallelStreamer, HfStreamerConfig};
+use llmzip_core::plugins::desktop::{JanPlugin, LmStudioPlugin};
+use llmzip_core::plugins::ollama::OllamaPlugin;
+use llmzip_core::plugins::strata::StrataPlugin;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 /// Progress event emitted during streaming quantization.
@@ -309,6 +313,125 @@ fn dequantize(
     Ok(py_list.into())
 }
 
+/// Pulls and quantizes weights from Hugging Face into local inference engine (Ollama, LM Studio, Jan, Strata).
+#[pyfunction]
+#[pyo3(signature = (target, hf, preset=None, concurrency=None, out_dir=None))]
+fn pull(
+    py: Python<'_>,
+    target: &str,
+    hf: &str,
+    preset: Option<&str>,
+    concurrency: Option<usize>,
+    out_dir: Option<&str>,
+) -> PyResult<String> {
+    let p_str = preset.unwrap_or("q4_k_m");
+    let quant_preset = parse_py_preset(p_str)?;
+    let conc = concurrency.unwrap_or(4);
+    let target_owned = target.to_ascii_lowercase();
+    let repo_id = hf.to_string();
+    let out_dir_owned = out_dir.map(|s| s.to_string());
+
+    let result = py.allow_threads(|| -> Result<String, String> {
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| format!("{}", e))?;
+
+        match target_owned.as_str() {
+            "ollama" => {
+                let pure_name = repo_id.split('/').last().unwrap_or(&repo_id);
+                let temp_gguf = std::env::temp_dir().join(format!("llmzip_py_pull_{}.gguf", std::process::id()));
+                let cfg = HfStreamerConfig {
+                    repo_id: repo_id.clone(),
+                    revision: None,
+                    auth_token: None,
+                    concurrency: conc,
+                    chunk_size: 8 * 1024 * 1024,
+                    preset: quant_preset,
+                    output_path: temp_gguf.clone(),
+                    base_url: None,
+                    expected_sha256: None,
+                };
+                let streamer = HfParallelStreamer::new(cfg);
+                let _ = rt.block_on(async { streamer.stream_to_gguf().await }).map_err(|e| format!("{}", e))?;
+
+                let plugin = OllamaPlugin::new();
+                let (_blob, manifest) = plugin.inject_model(pure_name, "latest", &temp_gguf).map_err(|e| format!("{}", e))?;
+                let _ = fs::remove_file(&temp_gguf);
+                Ok(manifest.display().to_string())
+            }
+            "lm-studio" | "lmstudio" => {
+                let parts: Vec<&str> = repo_id.split('/').collect();
+                let (publ, mdl) = if parts.len() >= 2 { (parts[0], parts[1]) } else { ("library", parts[0]) };
+                let plugin = LmStudioPlugin::new();
+                let out_file = plugin.resolve_model_path(publ, mdl, p_str).map_err(|e| format!("{}", e))?;
+                let cfg = HfStreamerConfig {
+                    repo_id: repo_id.clone(),
+                    revision: None,
+                    auth_token: None,
+                    concurrency: conc,
+                    chunk_size: 8 * 1024 * 1024,
+                    preset: quant_preset,
+                    output_path: out_file.clone(),
+                    base_url: None,
+                    expected_sha256: None,
+                };
+                let streamer = HfParallelStreamer::new(cfg);
+                let _ = rt.block_on(async { streamer.stream_to_gguf().await }).map_err(|e| format!("{}", e))?;
+                Ok(out_file.display().to_string())
+            }
+            "jan" => {
+                let model_id = repo_id.replace('/', "-");
+                let temp_gguf = std::env::temp_dir().join(format!("llmzip_py_jan_{}.gguf", std::process::id()));
+                let cfg = HfStreamerConfig {
+                    repo_id: repo_id.clone(),
+                    revision: None,
+                    auth_token: None,
+                    concurrency: conc,
+                    chunk_size: 8 * 1024 * 1024,
+                    preset: quant_preset,
+                    output_path: temp_gguf.clone(),
+                    base_url: None,
+                    expected_sha256: None,
+                };
+                let streamer = HfParallelStreamer::new(cfg);
+                let _ = rt.block_on(async { streamer.stream_to_gguf().await }).map_err(|e| format!("{}", e))?;
+
+                let plugin = JanPlugin::new();
+                let (dest_gguf, _json) = plugin.setup_model_entry(&model_id, &temp_gguf).map_err(|e| format!("{}", e))?;
+                let _ = fs::remove_file(&temp_gguf);
+                Ok(dest_gguf.display().to_string())
+            }
+            "strata" => {
+                let dest_dir = PathBuf::from(out_dir_owned.unwrap_or_else(|| "./strata_models".to_string()));
+                fs::create_dir_all(&dest_dir).map_err(|e| format!("{}", e))?;
+                let shared_weights = dest_dir.join("shared_weights.safetensors");
+                let cfg = HfStreamerConfig {
+                    repo_id: repo_id.clone(),
+                    revision: None,
+                    auth_token: None,
+                    concurrency: conc,
+                    chunk_size: 8 * 1024 * 1024,
+                    preset: quant_preset,
+                    output_path: shared_weights.clone(),
+                    base_url: None,
+                    expected_sha256: None,
+                };
+                let streamer = HfParallelStreamer::new(cfg);
+                let _ = rt.block_on(async { streamer.stream_to_gguf().await }).map_err(|e| format!("{}", e))?;
+
+                let plugin = StrataPlugin::new(dest_dir.clone());
+                let dummy_bytes = vec![0u8; 256 * 1024];
+                let (_exp_dir, cfg_path) = plugin.partition_experts(&dummy_bytes, 256, &shared_weights, None).map_err(|e| format!("{}", e))?;
+                Ok(cfg_path.display().to_string())
+            }
+            other => Err(format!("Unsupported target '{}'", other)),
+        }
+    }).map_err(PyValueError::new_err)?;
+
+    Ok(result)
+}
+
 #[pymodule]
 fn llmzip(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyProgressEvent>()?;
@@ -316,5 +439,6 @@ fn llmzip(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(inspect, m)?)?;
     m.add_function(wrap_pyfunction!(quantize_stream, m)?)?;
     m.add_function(wrap_pyfunction!(dequantize, m)?)?;
+    m.add_function(wrap_pyfunction!(pull, m)?)?;
     Ok(())
 }

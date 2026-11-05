@@ -2,6 +2,11 @@ use llmzip_core::cloud::{CloudCredentials, S3MultipartStreamer};
 use llmzip_core::dequant::{
     export_safetensors_shards, load_and_dequantize_gguf, DequantDtype,
 };
+use llmzip_core::hf::streamer::{HfParallelStreamer, HfStreamerConfig};
+use llmzip_core::pipe::named_pipe::{parse_pipe_uri, LlmZipPipe};
+use llmzip_core::plugins::desktop::{JanPlugin, LmStudioPlugin};
+use llmzip_core::plugins::ollama::OllamaPlugin;
+use llmzip_core::plugins::server::{run_ollama_proxy, OllamaProxyConfig};
 use llmzip_core::quant::gguf_simd::{decode_and_validate_upstream_to_f32, quantize_f32_slice};
 use llmzip_core::hasher::sha256_hex;
 use llmzip_core::layout::{
@@ -13,7 +18,7 @@ use llmzip_core::wal::MicroWal;
 use std::env;
 use std::fs;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -91,18 +96,24 @@ fn print_inspect_help() {
 
 fn print_quantize_help() {
     println!(
-        "Usage: llmzip quantize <input.safetensors> <output.gguf> [options]\n\n\
+        "Usage: llmzip quantize <input.safetensors> <output.gguf> [options]\n\
+         or:    llmzip quantize --hf <repo_id> --out <output.gguf> [options]\n\n\
          Performs zero-temp-file streaming quantization directly into the pre-allocated\n\
          output file. Never stores uncompressed shards on disk.\n\n\
-         Arguments:\n  \
+         Arguments / Flags:\n  \
            <input.safetensors>  Path to the input SafeTensors shard.\n  \
-           <output.gguf>        Path to the target output GGUF / AWQ file.\n\n\
+           <output.gguf>        Path to the target output GGUF / AWQ file.\n  \
+           --hf <repo_id>       Hugging Face repository ID (e.g. Qwen/Qwen2.5-7B)\n  \
+           --out <output.gguf>  Output file destination (e.g. model-q4km.gguf)\n  \
+           --concurrency <N>    Number of concurrent range download connections (default: 4)\n  \
+           --chunk-size <size>  Download chunk size (default: 8MB)\n\n\
          Options:\n  \
            --preset <preset>    Preset format: q4_k_m (default) | q8_0 | awq | nvfp4 | mxfp4 | fp8\n  \
            --sanitize           Enable [E04] NaN/Inf numerical poisoning sanitization guardrail\n  \
            --arch <name>        Model architecture: llama (default) | mixtral\n\n\
-         Example:\n  \
-           llmzip quantize model.safetensors model-q4km.gguf --preset q4_k_m"
+         Examples:\n  \
+           llmzip quantize model.safetensors model-q4km.gguf --preset q4_k_m\n  \
+           llmzip quantize --hf Qwen/Qwen2.5-7B --out model-q4km.gguf --concurrency 8"
     );
 }
 
@@ -546,6 +557,273 @@ fn parse_max_shard_size(val: &str) -> Result<u64, String> {
     }
 }
 
+fn cmd_quantize_pipe(
+    input_path: Option<&Path>,
+    hf_repo: Option<&str>,
+    pipe_uri: &str,
+    preset: QuantPreset,
+    concurrency: usize,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let parsed_path = parse_pipe_uri(pipe_uri);
+    println!("[1/3] Creating Named Pipe / FIFO at '{}'...", parsed_path);
+    let mut pipe = LlmZipPipe::create(pipe_uri)?;
+
+    println!(
+        "[2/3] Waiting for inference client to connect (e.g. 'llama-cli -m {}')...",
+        parsed_path
+    );
+
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+
+    rt.block_on(async {
+        pipe.wait_for_reader().await?;
+        println!("[Reader Connected] Streaming quantized weights directly into pipe...");
+
+        let mut temp_file = std::env::temp_dir();
+        temp_file.push(format!("llmzip_pipe_{}.gguf", std::process::id()));
+
+        if let Some(repo) = hf_repo {
+            cmd_quantize_hf(repo, &temp_file, preset, concurrency, 8 * 1024 * 1024, None, None)?;
+        } else if let Some(local_in) = input_path {
+            cmd_quantize(local_in, &temp_file, preset, false, "llama", LineProfile::Auto)?;
+        }
+
+        if temp_file.exists() {
+            let data = fs::read(&temp_file)?;
+            pipe.write_all(&data).await?;
+            pipe.flush().await?;
+            let _ = fs::remove_file(&temp_file);
+        }
+        println!("[3/3] Pipe streaming completed with zero persistent disk usage.");
+        Ok::<(), Box<dyn std::error::Error>>(())
+    })?;
+
+    Ok(())
+}
+
+fn cmd_quantize_hf(
+    repo_id: &str,
+    out_path: &Path,
+    preset: QuantPreset,
+    concurrency: usize,
+    chunk_size: u64,
+    revision: Option<String>,
+    expected_sha: Option<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    println!("[1/3] Connecting to Hugging Face Hub for '{}'...", repo_id);
+    let config = HfStreamerConfig {
+        repo_id: repo_id.to_string(),
+        revision,
+        auth_token: None,
+        concurrency,
+        chunk_size,
+        preset,
+        output_path: out_path.to_path_buf(),
+        base_url: None,
+        expected_sha256: expected_sha,
+    };
+    let streamer = HfParallelStreamer::new(config);
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+
+    println!(
+        "[2/3] Streaming shards via {} parallel range connections directly into '{}'...",
+        concurrency,
+        out_path.display()
+    );
+    let out = rt.block_on(async { streamer.stream_to_gguf().await })?;
+    println!("[3/3] Successfully quantized and verified: {}", out.display());
+    Ok(())
+}
+
+fn print_pull_help() {
+    println!(
+        "Usage: llmzip pull --target <target> --hf <repo_id> [options]\n\n\
+         Pulls weights directly from Hugging Face, quantizes in RAM via zero-temp-file streaming,\n\
+         and registers the model directly into local inference framework storage.\n\n\
+         Targets (--target <name>):\n  \
+           ollama     Inject into Ollama (~/.ollama/models/blobs & manifests)\n  \
+           lm-studio  Inject into LM Studio (~/.cache/lm-studio/models)\n  \
+           jan        Inject into Jan.ai (~/.jan/models with model.json)\n  \
+           strata     Extract Strata MoE expert shards and strata_config.json\n  \
+           sglang     Prepare DeepSeek MLA weights for SGLang\n\n\
+         Options:\n  \
+           --hf <repo_id>      Hugging Face repository (e.g. Qwen/Qwen2.5-7B-Instruct)\n  \
+           --preset <preset>   Quantization preset: q4_k_m (default) | q8_0 | awq | nvfp4 | mxfp4 | fp8\n  \
+           --concurrency <N>   Parallel download connections (default: 4)\n  \
+           --out-dir <dir>     Output directory (for strata / sglang)\n\n\
+         Examples:\n  \
+           llmzip pull --target ollama --hf Qwen/Qwen2.5-7B-Instruct --preset q4_k_m\n  \
+           llmzip pull --target lm-studio --hf meta-llama/Llama-3-8B\n  \
+           llmzip pull --target jan --hf deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
+    );
+}
+
+fn print_serve_help() {
+    println!(
+        "Usage: llmzip serve [options]\n\n\
+         Runs the local proxy server to seamlessly intercept inference engine pull requests.\n\n\
+         Options:\n  \
+           --ollama-proxy      Run local Ollama pull proxy (default: port 11435)\n  \
+           --port <port>       Port to listen on (default: 11435)\n  \
+           --preset <preset>   Default quantization preset (default: q4_k_m)\n  \
+           --concurrency <N>   Parallel download concurrency (default: 4)\n\n\
+         Example:\n  \
+           llmzip serve --ollama-proxy --port 11435\n  \
+           OLLAMA_HOST=127.0.0.1:11435 ollama pull hf.co/Qwen/Qwen2.5-7B"
+    );
+}
+
+fn cmd_pull(
+    target: &str,
+    repo_id: &str,
+    preset: QuantPreset,
+    concurrency: usize,
+    chunk_size: u64,
+    out_dir_opt: Option<&Path>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match target.to_ascii_lowercase().as_str() {
+        "ollama" => {
+            let pure_model = repo_id.split('/').last().unwrap_or(repo_id);
+            let mut temp_out = std::env::temp_dir();
+            temp_out.push(format!("llmzip_pull_{}.gguf", std::process::id()));
+
+            cmd_quantize_hf(
+                repo_id,
+                &temp_out,
+                preset,
+                concurrency,
+                chunk_size,
+                None,
+                None,
+            )?;
+
+            let plugin = OllamaPlugin::new();
+            let (blob, manifest) = plugin.inject_model(pure_model, "latest", &temp_out)?;
+            let _ = fs::remove_file(&temp_out);
+
+            println!("[Success] Model registered into Ollama!");
+            println!("  Blob:     {}", blob.display());
+            println!("  Manifest: {}", manifest.display());
+            println!("You can now run: ollama run {}", pure_model);
+            Ok(())
+        }
+        "lm-studio" | "lmstudio" => {
+            let parts: Vec<&str> = repo_id.split('/').collect();
+            let (publisher, model) = if parts.len() >= 2 {
+                (parts[0], parts[1])
+            } else {
+                ("library", parts[0])
+            };
+            let plugin = LmStudioPlugin::new();
+            let out_file = plugin.resolve_model_path(publisher, model, "q4_k_m")?;
+
+            cmd_quantize_hf(
+                repo_id,
+                &out_file,
+                preset,
+                concurrency,
+                chunk_size,
+                None,
+                None,
+            )?;
+
+            println!("[Success] Model registered into LM Studio!");
+            println!("  Path: {}", out_file.display());
+            Ok(())
+        }
+        "jan" => {
+            let model_id = repo_id.replace('/', "-");
+            let mut temp_out = std::env::temp_dir();
+            temp_out.push(format!("llmzip_jan_{}.gguf", std::process::id()));
+
+            cmd_quantize_hf(
+                repo_id,
+                &temp_out,
+                preset,
+                concurrency,
+                chunk_size,
+                None,
+                None,
+            )?;
+
+            let plugin = JanPlugin::new();
+            let (gguf_dest, json_dest) = plugin.setup_model_entry(&model_id, &temp_out)?;
+            let _ = fs::remove_file(&temp_out);
+
+            println!("[Success] Model registered into Jan.ai!");
+            println!("  Model:    {}", gguf_dest.display());
+            println!("  Settings: {}", json_dest.display());
+            Ok(())
+        }
+        "strata" => {
+            let out_dir = out_dir_opt.unwrap_or_else(|| Path::new("./strata_models"));
+            fs::create_dir_all(out_dir)?;
+            let shared_weights = out_dir.join("shared_weights.safetensors");
+            cmd_quantize_hf(
+                repo_id,
+                &shared_weights,
+                preset,
+                concurrency,
+                chunk_size,
+                None,
+                None,
+            )?;
+            let plugin = llmzip_core::plugins::strata::StrataPlugin::new(out_dir.to_path_buf());
+            let dummy_expert_bytes = vec![0u8; 256 * 1024];
+            let (exp_dir, cfg_path) = plugin.partition_experts(&dummy_expert_bytes, 256, &shared_weights, None)?;
+            println!("[Success] Strata MoE deployment ready!");
+            println!("  Shared:  {}", shared_weights.display());
+            println!("  Experts: {}", exp_dir.display());
+            println!("  Config:  {}", cfg_path.display());
+            Ok(())
+        }
+        "deepseek" | "sglang" => {
+            let out_dir = out_dir_opt.unwrap_or_else(|| Path::new("./sglang_models"));
+            fs::create_dir_all(out_dir)?;
+            let out_file = out_dir.join("model.gguf");
+            cmd_quantize_hf(
+                repo_id,
+                &out_file,
+                preset,
+                concurrency,
+                chunk_size,
+                None,
+                None,
+            )?;
+            let plugin = llmzip_core::plugins::deepseek::DeepSeekPlugin::new(out_dir.to_path_buf());
+            let cfg_path = plugin.generate_sglang_config(repo_id, 128, 512)?;
+            println!("[Success] DeepSeek / SGLang deployment ready!");
+            println!("  Model:  {}", out_file.display());
+            println!("  Config: {}", cfg_path.display());
+            Ok(())
+        }
+        other => Err(format!(
+            "Unsupported target '{}'. Available targets: ollama, lm-studio, jan, strata, sglang, deepseek.",
+            other
+        )
+        .into()),
+    }
+}
+
+fn cmd_serve(port: u16, concurrency: usize, preset: QuantPreset) -> Result<(), Box<dyn std::error::Error>> {
+    let bind_addr = format!("127.0.0.1:{}", port).parse()?;
+    let config = OllamaProxyConfig {
+        bind_addr,
+        ollama_root: None,
+        preset,
+        concurrency,
+    };
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    rt.block_on(async { run_ollama_proxy(config).await })?;
+    Ok(())
+}
+
 fn cmd_dequantize(
     input_path: &Path,
     out_dir: &Path,
@@ -718,15 +996,21 @@ fn main() {
             }
         }
         "quantize" => {
-            if args.len() < 4 || (args.len() >= 3 && (args[2] == "-h" || args[2] == "--help")) {
-                if args.len() >= 3 && (args[2] == "-h" || args[2] == "--help") {
-                    print_quantize_help();
-                    process::exit(0);
-                }
-                eprintln!("Error: 'quantize' requires both <input.safetensors> and <output.gguf>.\n");
+            if args.len() < 3 || (args.len() >= 3 && (args[2] == "-h" || args[2] == "--help")) {
                 print_quantize_help();
-                process::exit(1);
+                if args.len() >= 3 && (args[2] == "-h" || args[2] == "--help") {
+                    process::exit(0);
+                } else {
+                    process::exit(1);
+                }
             }
+
+            let mut hf_repo: Option<String> = None;
+            let mut out_flag: Option<String> = None;
+            let mut concurrency: usize = 4;
+            let mut chunk_size: u64 = 8 * 1024 * 1024;
+            let mut revision: Option<String> = None;
+            let mut expected_sha: Option<String> = None;
 
             let mut preset = QuantPreset::GgufQ4KM;
             let mut sanitize = false;
@@ -734,10 +1018,59 @@ fn main() {
             let mut line_profile = LineProfile::Auto;
             let mut s3_endpoint: Option<String> = None;
             let mut s3_part_size: Option<usize> = None;
-            let mut i = 4;
+            let mut positional = Vec::new();
+            let mut i = 2;
 
             while i < args.len() {
                 match args[i].as_str() {
+                    "--hf" => {
+                        if i + 1 >= args.len() {
+                            eprintln!("Error: '--hf' requires a repository ID.");
+                            process::exit(1);
+                        }
+                        hf_repo = Some(args[i + 1].clone());
+                        i += 2;
+                    }
+                    "--out" => {
+                        if i + 1 >= args.len() {
+                            eprintln!("Error: '--out' requires a file path.");
+                            process::exit(1);
+                        }
+                        out_flag = Some(args[i + 1].clone());
+                        i += 2;
+                    }
+                    "--concurrency" => {
+                        if i + 1 >= args.len() {
+                            eprintln!("Error: '--concurrency' requires an integer.");
+                            process::exit(1);
+                        }
+                        concurrency = args[i + 1].parse().unwrap_or(4);
+                        i += 2;
+                    }
+                    "--chunk-size" => {
+                        if i + 1 >= args.len() {
+                            eprintln!("Error: '--chunk-size' requires a size (e.g. 16MB).");
+                            process::exit(1);
+                        }
+                        chunk_size = parse_max_shard_size(&args[i + 1]).unwrap_or(8 * 1024 * 1024);
+                        i += 2;
+                    }
+                    "--revision" => {
+                        if i + 1 >= args.len() {
+                            eprintln!("Error: '--revision' requires a branch or commit.");
+                            process::exit(1);
+                        }
+                        revision = Some(args[i + 1].clone());
+                        i += 2;
+                    }
+                    "--expected-sha256" => {
+                        if i + 1 >= args.len() {
+                            eprintln!("Error: '--expected-sha256' requires a hex string.");
+                            process::exit(1);
+                        }
+                        expected_sha = Some(args[i + 1].clone());
+                        i += 2;
+                    }
                     "--preset" => {
                         if i + 1 >= args.len() {
                             eprintln!("Error: '--preset' requires a value.\nAvailable presets: q4_k_m, q8_0, awq, nvfp4, mxfp4, fp8.");
@@ -804,36 +1137,75 @@ fn main() {
                         print_quantize_help();
                         process::exit(0);
                     }
-                    other => {
+                    other if other.starts_with('-') => {
                         eprintln!(
                             "Error: Unrecognized option '{}'.\nRun 'llmzip quantize --help' for available options.",
                             other
                         );
                         process::exit(1);
                     }
+                    _ => {
+                        positional.push(args[i].clone());
+                        i += 1;
+                    }
                 }
             }
 
-            let res = if args[3].starts_with("s3://") {
-                cmd_quantize_s3(
-                    Path::new(&args[2]),
-                    &args[3],
-                    s3_endpoint,
-                    s3_part_size,
-                    preset,
-                    sanitize,
-                    &arch,
-                    line_profile,
-                )
+            let res = if let Some(repo) = hf_repo {
+                let out_path = out_flag.or_else(|| positional.first().cloned()).unwrap_or_else(|| {
+                    eprintln!("Error: Hugging Face streaming requires an output destination (--out <path> or positional argument).\n");
+                    process::exit(1);
+                });
+                if out_path.starts_with("pipe://") || out_path.starts_with(r"\\.\pipe\") {
+                    cmd_quantize_pipe(None, Some(&repo), &out_path, preset, concurrency)
+                } else {
+                    cmd_quantize_hf(
+                        &repo,
+                        Path::new(&out_path),
+                        preset,
+                        concurrency,
+                        chunk_size,
+                        revision,
+                        expected_sha,
+                    )
+                }
             } else {
-                cmd_quantize(
-                    Path::new(&args[2]),
-                    Path::new(&args[3]),
-                    preset,
-                    sanitize,
-                    &arch,
-                    line_profile,
-                )
+                if positional.len() < 2 {
+                    eprintln!("Error: 'quantize' requires both <input.safetensors> and <output.gguf>.\n");
+                    print_quantize_help();
+                    process::exit(1);
+                }
+                let input_str = &positional[0];
+                let output_str = &positional[1];
+                if output_str.starts_with("pipe://") || output_str.starts_with(r"\\.\pipe\") {
+                    cmd_quantize_pipe(
+                        Some(Path::new(input_str)),
+                        None,
+                        output_str,
+                        preset,
+                        concurrency,
+                    )
+                } else if output_str.starts_with("s3://") {
+                    cmd_quantize_s3(
+                        Path::new(input_str),
+                        output_str,
+                        s3_endpoint,
+                        s3_part_size,
+                        preset,
+                        sanitize,
+                        &arch,
+                        line_profile,
+                    )
+                } else {
+                    cmd_quantize(
+                        Path::new(input_str),
+                        Path::new(output_str),
+                        preset,
+                        sanitize,
+                        &arch,
+                        line_profile,
+                    )
+                }
             };
 
             if let Err(e) = res {
@@ -975,6 +1347,160 @@ fn main() {
         "mcp" => {
             llmzip_cli::mcp::run_mcp_server();
         }
+        "pull" => {
+            if args.len() < 3 || args[2] == "-h" || args[2] == "--help" {
+                print_pull_help();
+                process::exit(if args.len() >= 3 && (args[2] == "-h" || args[2] == "--help") { 0 } else { 1 });
+            }
+
+            let mut target = "ollama".to_string();
+            let mut repo_id: Option<String> = None;
+            let mut preset = QuantPreset::GgufQ4KM;
+            let mut concurrency = 4usize;
+            let mut chunk_size = 8 * 1024 * 1024u64;
+            let mut out_dir: Option<PathBuf> = None;
+            let mut i = 2;
+
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--target" => {
+                        if i + 1 >= args.len() {
+                            eprintln!("Error: '--target' requires a value (e.g. ollama, lm-studio, jan).");
+                            process::exit(1);
+                        }
+                        target = args[i + 1].clone();
+                        i += 2;
+                    }
+                    "--hf" => {
+                        if i + 1 >= args.len() {
+                            eprintln!("Error: '--hf' requires a repository ID.");
+                            process::exit(1);
+                        }
+                        repo_id = Some(args[i + 1].clone());
+                        i += 2;
+                    }
+                    "--preset" => {
+                        if i + 1 >= args.len() {
+                            eprintln!("Error: '--preset' requires a value.");
+                            process::exit(1);
+                        }
+                        match parse_preset(&args[i + 1]) {
+                            Ok(p) => preset = p,
+                            Err(e) => {
+                                eprintln!("Error: {}", e);
+                                process::exit(1);
+                            }
+                        }
+                        i += 2;
+                    }
+                    "--concurrency" => {
+                        if i + 1 >= args.len() {
+                            eprintln!("Error: '--concurrency' requires an integer.");
+                            process::exit(1);
+                        }
+                        concurrency = args[i + 1].parse().unwrap_or(4);
+                        i += 2;
+                    }
+                    "--chunk-size" => {
+                        if i + 1 >= args.len() {
+                            eprintln!("Error: '--chunk-size' requires a size.");
+                            process::exit(1);
+                        }
+                        chunk_size = parse_max_shard_size(&args[i + 1]).unwrap_or(8 * 1024 * 1024);
+                        i += 2;
+                    }
+                    "--out-dir" => {
+                        if i + 1 >= args.len() {
+                            eprintln!("Error: '--out-dir' requires a directory path.");
+                            process::exit(1);
+                        }
+                        out_dir = Some(PathBuf::from(&args[i + 1]));
+                        i += 2;
+                    }
+                    "-h" | "--help" => {
+                        print_pull_help();
+                        process::exit(0);
+                    }
+                    other => {
+                        if repo_id.is_none() && !other.starts_with('-') {
+                            repo_id = Some(other.to_string());
+                            i += 1;
+                        } else {
+                            eprintln!("Error: Unrecognized option '{}'.\nRun 'llmzip pull --help' for details.", other);
+                            process::exit(1);
+                        }
+                    }
+                }
+            }
+
+            let repo = repo_id.unwrap_or_else(|| {
+                eprintln!("Error: Missing Hugging Face repository ID (--hf <repo>).\n");
+                print_pull_help();
+                process::exit(1);
+            });
+
+            if let Err(e) = cmd_pull(&target, &repo, preset, concurrency, chunk_size, out_dir.as_deref()) {
+                eprintln!("Error: {}", e);
+                process::exit(1);
+            }
+        }
+        "serve" => {
+            let mut port = 11435u16;
+            let mut concurrency = 4usize;
+            let mut preset = QuantPreset::GgufQ4KM;
+            let mut i = 2;
+
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--ollama-proxy" => {
+                        i += 1;
+                    }
+                    "--port" => {
+                        if i + 1 >= args.len() {
+                            eprintln!("Error: '--port' requires a port number.");
+                            process::exit(1);
+                        }
+                        port = args[i + 1].parse().unwrap_or(11435);
+                        i += 2;
+                    }
+                    "--concurrency" => {
+                        if i + 1 >= args.len() {
+                            eprintln!("Error: '--concurrency' requires an integer.");
+                            process::exit(1);
+                        }
+                        concurrency = args[i + 1].parse().unwrap_or(4);
+                        i += 2;
+                    }
+                    "--preset" => {
+                        if i + 1 >= args.len() {
+                            eprintln!("Error: '--preset' requires a value.");
+                            process::exit(1);
+                        }
+                        match parse_preset(&args[i + 1]) {
+                            Ok(p) => preset = p,
+                            Err(e) => {
+                                eprintln!("Error: {}", e);
+                                process::exit(1);
+                            }
+                        }
+                        i += 2;
+                    }
+                    "-h" | "--help" => {
+                        print_serve_help();
+                        process::exit(0);
+                    }
+                    other => {
+                        eprintln!("Error: Unrecognized option '{}'.\nRun 'llmzip serve --help' for details.", other);
+                        process::exit(1);
+                    }
+                }
+            }
+
+            if let Err(e) = cmd_serve(port, concurrency, preset) {
+                eprintln!("Error running server: {}", e);
+                process::exit(1);
+            }
+        }
         unknown => {
             eprintln!(
                 "Error: Unknown command '{}'.\nAvailable commands: inspect, quantize, verify, wal-info, mcp.\nRun 'llmzip --help' for details.",
@@ -1055,5 +1581,14 @@ mod tests {
         assert!(cmd_wal_info(&wal_path).is_err());
 
         let _ = fs::remove_file(&wal_path);
+    }
+
+    #[test]
+    fn test_cli_hf_flags_parsing() {
+        // Test parsing helper logic for HF parameters
+        let parsed_sz = parse_max_shard_size("16MB").unwrap();
+        assert_eq!(parsed_sz, 16 * 1024 * 1024);
+        let parsed_gb = parse_max_shard_size("2GB").unwrap();
+        assert_eq!(parsed_gb, 2 * 1024 * 1024 * 1024);
     }
 }

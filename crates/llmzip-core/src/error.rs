@@ -71,6 +71,21 @@ pub enum LlmZipError {
         tensor_name: String,
         reason: String,
     },
+    /// Hugging Face Hub API or repository error.
+    HfError {
+        repo_id: String,
+        reason: String,
+    },
+    /// Inference target plugin error (Ollama, LM Studio, Jan, SGLang, Strata).
+    PluginError {
+        target: String,
+        reason: String,
+    },
+    /// Named Pipe / Unix FIFO IPC streaming error.
+    PipeError {
+        pipe_path: String,
+        reason: String,
+    },
 }
 
 impl fmt::Display for LlmZipError {
@@ -145,6 +160,9 @@ impl fmt::Display for LlmZipError {
             Self::S3Error { bucket, key, reason } => write!(f, "[S3 Error] s3://{}/{}: {}", bucket, key, reason),
             Self::AuthExpired { reason } => write!(f, "[Auth Error] Credentials expired or unauthorized: {}", reason),
             Self::DequantError { tensor_name, reason } => write!(f, "[Dequant Error] Tensor '{}': {}", tensor_name, reason),
+            Self::HfError { repo_id, reason } => write!(f, "[HF Error] Repo '{}': {}", repo_id, reason),
+            Self::PluginError { target, reason } => write!(f, "[Plugin Error] Target '{}': {}", target, reason),
+            Self::PipeError { pipe_path, reason } => write!(f, "[Pipe Error] Pipe '{}': {}", pipe_path, reason),
         }
     }
 }
@@ -158,3 +176,29 @@ impl From<io::Error> for LlmZipError {
 }
 
 pub type Result<T> = std::result::Result<T, LlmZipError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_v030_error_display() {
+        let hf_err = LlmZipError::HfError {
+            repo_id: "Qwen/Qwen2.5-7B".to_string(),
+            reason: "401 Unauthorized".to_string(),
+        };
+        assert!(hf_err.to_string().contains("[HF Error] Repo 'Qwen/Qwen2.5-7B'"));
+
+        let plugin_err = LlmZipError::PluginError {
+            target: "ollama".to_string(),
+            reason: "directory not found".to_string(),
+        };
+        assert!(plugin_err.to_string().contains("[Plugin Error] Target 'ollama'"));
+
+        let pipe_err = LlmZipError::PipeError {
+            pipe_path: "pipe://test".to_string(),
+            reason: "broken pipe".to_string(),
+        };
+        assert!(pipe_err.to_string().contains("[Pipe Error] Pipe 'pipe://test'"));
+    }
+}

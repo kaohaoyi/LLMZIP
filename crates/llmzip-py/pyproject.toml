@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "llmzip"
-version = "0.2.0"
+version = "0.3.0"
 description = "HatchZip-inspired streaming LLM weight quantizer (GGUF/AWQ) for extreme disk-constrained environments"
 requires-python = ">=3.9"
 classifiers = [

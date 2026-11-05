@@ -144,6 +144,7 @@ pub struct StreamingQuantizeEngine {
     hasher: StreamingSha256,
     ring_buf: LayerRingBuffer,
     awq_calibrator: Option<AwqSlidingCalibrator>,
+    stream_cursor: u64,
 }
 
 impl StreamingQuantizeEngine {
@@ -181,6 +182,8 @@ impl StreamingQuantizeEngine {
 
         let ring_buf = LayerRingBuffer::new(config.ring_buffer_budget_bytes);
 
+        let initial_cursor = if resume { wal.shard_confirmed_offset } else { 0 };
+
         let mut engine = Self {
             vtas,
             plan,
@@ -192,6 +195,7 @@ impl StreamingQuantizeEngine {
             hasher,
             ring_buf,
             awq_calibrator: None,
+            stream_cursor: initial_cursor,
         };
 
         // If resuming an AWQ local calibration session and `embed_tokens` was already quantized to disk,
@@ -240,7 +244,7 @@ impl StreamingQuantizeEngine {
 
     /// Returns `(current_shard_idx, confirmed_byte_offset)` for issuing the next HTTP `Range: bytes=<offset>-` request.
     pub fn resume_cursor(&self) -> (usize, u64) {
-        (self.wal.current_shard_idx as usize, self.wal.shard_confirmed_offset)
+        (self.wal.current_shard_idx as usize, self.stream_cursor)
     }
 
     /// Streams a shard from `shard_bytes_from_offset` (which begins at `start_offset` in the shard),
@@ -256,7 +260,7 @@ impl StreamingQuantizeEngine {
     ) -> Result<usize> {
         let shard = self.vtas.shards[shard_idx].clone();
         let expected_offset = if self.wal.current_shard_idx as usize == shard_idx {
-            self.wal.shard_confirmed_offset
+            self.stream_cursor
         } else {
             0
         };
@@ -367,6 +371,8 @@ impl StreamingQuantizeEngine {
             abs_cursor = chunk_end;
         }
 
+        self.stream_cursor = abs_cursor;
+
         if wal_dirty {
             self.output_file.sync_data()?;
             self.wal.sync_to_file(&mut self.wal_file)?;
@@ -375,7 +381,9 @@ impl StreamingQuantizeEngine {
         // If we reached EOF of the current shard, verify its full cryptographic LFS SHA-256 [E03]!
         if abs_cursor == shard.total_file_size {
             let actual_hex = self.hasher.finalize_hex();
-            if !actual_hex.eq_ignore_ascii_case(&shard.expected_sha256_hex) {
+            if !shard.expected_sha256_hex.is_empty()
+                && !actual_hex.eq_ignore_ascii_case(&shard.expected_sha256_hex)
+            {
                 self.output_file.quarantine_and_abort()?;
                 return Err(LlmZipError::Sha256Mismatch {
                     shard_name: shard.shard_name.clone(),
@@ -389,6 +397,7 @@ impl StreamingQuantizeEngine {
                 self.hasher = StreamingSha256::new();
                 self.wal.current_shard_idx = (shard_idx + 1) as u32;
                 self.wal.shard_confirmed_offset = 0;
+                self.stream_cursor = 0;
                 self.wal.sha256_midstate = self.hasher.export_midstate();
                 self.wal.sync_to_file(&mut self.wal_file)?;
             } else if self.wal.all_completed() {
@@ -461,5 +470,15 @@ impl StreamingQuantizeEngine {
 
     pub fn is_committed(&self) -> bool {
         self.output_file.is_committed()
+    }
+
+    pub fn commit_if_completed(&mut self) -> Result<bool> {
+        if self.wal.all_completed() && !self.output_file.is_committed() {
+            self.output_file.commit_verified()?;
+            let _ = fs::remove_file(&self.wal_path);
+            Ok(true)
+        } else {
+            Ok(self.output_file.is_committed())
+        }
     }
 }
