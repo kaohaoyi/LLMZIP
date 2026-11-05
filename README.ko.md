@@ -348,6 +348,10 @@ Hugging Face에서 모델 가중치를 다운로드하거나 GGUF로 변환할 �
   - 로컬 추론 원클릭 Pull 플러그인: Ollama (CLI 직접 호출 + Proxy 모드), LM Studio, Jan 자동 연동.
   - llama.cpp 전용 명명된 파이프 (Windows Named Pipe / Unix FIFO) 무디스크 실시간 스트리밍 추론.
   - DeepSeek 네이티브 추론 (MLA Attention + SGLang) 및 Strata MoE 계층형 전문가 오프로딩 엔진 연동.
+- [ ] **v0.4.0**: 프로덕션 서버 추론 클러스터 및 P2P 스웜 분산 스트리밍.
+  - vLLM 및 SGLang 엔터프라이즈 프로덕션 클러스터 풀 플러그인 (Ray 멀티 노드/멀티 GPU 스트리밍 분산).
+  - KServe / Triton Inference Server 중간 디스크 없는 실시간 핫플러그 배포.
+  - P2P 스웜(Swarm / BitTorrent 스타일) 분산 가중치 스트리밍 배포.
 
 ---
 

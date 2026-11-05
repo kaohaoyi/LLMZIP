@@ -348,6 +348,10 @@ LLMZIP 原生內建零依賴 MCP 伺服器（`llmzip mcp`），可直接加入�
   - 本地推論框架一鍵拉取插件：支援 Ollama（CLI 直調 + Proxy 服務模式）、LM Studio、Jan 自動注入。
   - llama.cpp 專屬具名管道（Windows Named Pipe / Unix FIFO）零磁碟落盤即時推論。
   - DeepSeek 原生推論（MLA 注意力 + SGLang）與 Strata MoE 分層專家卸載引擎原生適配。
+- [ ] **v0.4.0**：生產級雲端伺服器推論叢集與 P2P 分發。
+  - vLLM 與 SGLang 伺服器級生產叢集原生拉取插件（支援 Ray 多節點／多 GPU 串流分發）。
+  - KServe / Triton Inference Server 企業級容器化模型服務即時熱插拔。
+  - P2P 蜂群（Swarm / BitTorrent-style）去中心化分散式權重流式分發。
 
 ---
 

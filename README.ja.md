@@ -348,6 +348,10 @@ Hugging Face からモデルを取得または GGUF に変換する際は、デ�
   - ローカル推論向けワンクリックPullプラグイン：Ollama（CLI直結＋Proxyサービスモード）、LM Studio、Jan 自動配置。
   - llama.cpp 専用名前付きパイプ（Windows Named Pipe / Unix FIFO）による完全オンメモリ直接推論。
   - DeepSeek ネイティブ推論（MLA Attention + SGLang）および Strata MoE 階層エキスパートオフロードエンジン連携。
+- [ ] **v0.4.0**：エンタープライズ本番クラスター推論＆P2P分散ストリーミング。
+  - vLLM および SGLang 本番サーバークラスター向け直接Pullプラグイン（Rayマルチノード／マルチGPU並行配信）。
+  - KServe / Triton Inference Server 向け中間ディスクレス即時ホットプラグ。
+  - P2P Swarm（分散スウォーム）による広帯域分散ウェイトストリーミング。
 
 ---
 

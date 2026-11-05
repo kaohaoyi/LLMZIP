@@ -350,6 +350,10 @@ When downloading Hugging Face models or converting weights to GGUF, ALWAYS use `
   - Local inference one-click pull plugins: Ollama (CLI direct + Proxy mode), LM Studio, and Jan auto-injection.
   - llama.cpp native Named Pipe / Unix FIFO streaming output for zero-temp-file live inference loading.
   - DeepSeek native inference (MLA projection + SGLang) and Strata MoE tiered expert-offloading engine integration.
+- [ ] **v0.4.0**: Production server inference clusters & P2P swarm distribution.
+  - vLLM & SGLang production-grade cluster pull plugins (Ray multi-node / multi-GPU streaming distribution).
+  - KServe / Triton Inference Server enterprise hot-plug deployment without intermediate disk dumps.
+  - P2P swarm / distributed streaming weight dissemination for extreme bandwidth offloading.
 
 ---
 
