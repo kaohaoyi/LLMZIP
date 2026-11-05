@@ -343,7 +343,11 @@ LLMZIP 原生内置零依赖 MCP 服务器（`llmzip mcp`），可直接加入�
   - SafeTensors 双向反向量化导出 (`llmzip dequantize`) 与多分片索引生成。
   - 官方 Python SDK (`llmzip-py` via PyO3)，流式期间主动释放 GIL。
   - 官方轻量多阶段 Docker 镜像与 GitHub Actions 多平台 Wheel 自动化构建。
-- [ ] **v0.3.0**：原生 Hugging Face 多路并行 Range 流式下载器与 Ollama / `llama.cpp` 专属拉取插件（`/models/pull` 边下边转）。
+- [ ] **v0.3.0**：原生 Hugging Face 多路并行 Range 流式下载器与推理生态插件（Ollama / llama.cpp / DeepSeek / Strata）。
+  - 原生 Hugging Face 多路并行 Range 流式下载器（4~8 路非阻塞连接，分块顺序重组）。
+  - 本地推理框架一键拉取插件：支持 Ollama（CLI 直调 + Proxy 服务模式）、LM Studio、Jan 自动注入。
+  - llama.cpp 专属具名管道（Windows Named Pipe / Unix FIFO）零磁盘落盘即时推理。
+  - DeepSeek 原生推理（MLA 注意力 + SGLang）与 Strata MoE 分层专家卸载引擎原生适配。
 
 ---
 

@@ -343,7 +343,11 @@ Hugging Face에서 모델 가중치를 다운로드하거나 GGUF로 변환할 �
   - SafeTensors 양방향 역양자화 익스포트 (`llmzip dequantize`) 및 멀티 샤드 인덱싱.
   - 공식 Python SDK (`llmzip-py` via PyO3), 처리 중 GIL 자동 해제 지원.
   - 공식 멀티스테이지 Docker 컨테이너 및 GitHub Actions 크로스 플랫폼 Wheel CI.
-- [ ] **v0.3.0**: Hugging Face 직접 연결 멀티파트 Range 스트리밍 클라이언트 내장 및 Ollama / `llama.cpp` 전용 풀 플러그인 (`/models/pull` 인플레이스 변환).
+- [ ] **v0.3.0**: Hugging Face 직접 연결 멀티파트 Range 스트리밍 클라이언트 및 추론 생태계 플러그인 (Ollama / llama.cpp / DeepSeek / Strata).
+  - Hugging Face 다중 연결 Range 스트리밍 엔진 (4~8개 비차단 연결 및 순차 재배열 버퍼).
+  - 로컬 추론 원클릭 Pull 플러그인: Ollama (CLI 직접 호출 + Proxy 모드), LM Studio, Jan 자동 연동.
+  - llama.cpp 전용 명명된 파이프 (Windows Named Pipe / Unix FIFO) 무디스크 실시간 스트리밍 추론.
+  - DeepSeek 네이티브 추론 (MLA Attention + SGLang) 및 Strata MoE 계층형 전문가 오프로딩 엔진 연동.
 
 ---
 

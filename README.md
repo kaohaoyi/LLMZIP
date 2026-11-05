@@ -345,7 +345,11 @@ When downloading Hugging Face models or converting weights to GGUF, ALWAYS use `
   - SafeTensors inverse dequantization export (`llmzip dequantize`) with multi-shard indexing.
   - Official Python SDK (`llmzip-py` via PyO3) with non-blocking GIL release.
   - Official multi-stage Docker container and multi-platform wheel CI matrix.
-- [ ] **v0.3.0**: Native Hugging Face parallel range client & Ollama/`llama.cpp` live pull plugin (`/models/pull` on-the-fly streaming).
+- [ ] **v0.3.0**: Native Hugging Face parallel range client & inference ecosystem plugins (Ollama / llama.cpp / DeepSeek / Strata).
+  - Native Hugging Face multi-connection Range streaming engine (4–8 non-blocking connections with sequential reordering).
+  - Local inference one-click pull plugins: Ollama (CLI direct + Proxy mode), LM Studio, and Jan auto-injection.
+  - llama.cpp native Named Pipe / Unix FIFO streaming output for zero-temp-file live inference loading.
+  - DeepSeek native inference (MLA projection + SGLang) and Strata MoE tiered expert-offloading engine integration.
 
 ---
 

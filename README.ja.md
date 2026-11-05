@@ -343,7 +343,11 @@ Hugging Face からモデルを取得または GGUF に変換する際は、デ�
   - SafeTensors 逆量子化エクスポート (`llmzip dequantize`) とマルチシャードインデックス生成。
   - 公式 Python SDK (`llmzip-py` via PyO3)、処理中の GIL 自動解放対応。
   - 公式マルチステージ Docker コンテナおよび GitHub Actions マルチプラットフォーム Wheel CI。
-- [ ] **v0.3.0**：Hugging Face直接接続の並列Rangeダウンローダー内蔵および Ollama / `llama.cpp` 向けストリーミング取得プラグイン（`/models/pull` でのインプレース変換）。
+- [ ] **v0.3.0**：Hugging Face直接接続の並列Rangeダウンローダー＆推論エコシステムプラグイン（Ollama / llama.cpp / DeepSeek / Strata）。
+  - 原生 Hugging Face 多重並列 Range ストリーミングエンジン（4〜8路ノンブロッキング接続・順序保証バッファ）。
+  - ローカル推論向けワンクリックPullプラグイン：Ollama（CLI直結＋Proxyサービスモード）、LM Studio、Jan 自動配置。
+  - llama.cpp 専用名前付きパイプ（Windows Named Pipe / Unix FIFO）による完全オンメモリ直接推論。
+  - DeepSeek ネイティブ推論（MLA Attention + SGLang）および Strata MoE 階層エキスパートオフロードエンジン連携。
 
 ---
 
