@@ -205,6 +205,14 @@ llmzip.quantize_stream(
 )
 ```
 
+### 4. 公式 Docker コンテナ
+ローカルに Rust をインストールせず、完全隔離環境で LLMZIP を実行：
+
+```bash
+docker run --rm -v $(pwd):/workspace llmzip:latest \
+  quantize model.safetensors model-q4km.gguf --preset q4_k_m
+```
+
 ---
 
 ## 対応量子化プリセット

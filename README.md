@@ -205,6 +205,14 @@ llmzip.quantize_stream(
 )
 ```
 
+### 4. Docker Container
+Run LLMZIP in isolated or cloud environments without local Rust toolchain installation:
+
+```bash
+docker run --rm -v $(pwd):/workspace llmzip:latest \
+  quantize model.safetensors model-q4km.gguf --preset q4_k_m
+```
+
 ---
 
 ## Supported Quantization Presets

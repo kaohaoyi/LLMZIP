@@ -205,6 +205,14 @@ llmzip.quantize_stream(
 )
 ```
 
+### 4. 공식 Docker 컨테이너
+로컬에 Rust를 설치하지 않고 격리된 환경에서 LLMZIP 실행:
+
+```bash
+docker run --rm -v $(pwd):/workspace llmzip:latest \
+  quantize model.safetensors model-q4km.gguf --preset q4_k_m
+```
+
 ---
 
 ## 지원 양자화 포맷 프리셋

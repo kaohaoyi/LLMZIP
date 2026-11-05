@@ -205,6 +205,14 @@ llmzip.quantize_stream(
 )
 ```
 
+### 4. 官方 Docker 容器
+在隔離環境中執行 LLMZIP，無須在本機安裝 Rust 工具鏈：
+
+```bash
+docker run --rm -v $(pwd):/workspace llmzip:latest \
+  quantize model.safetensors model-q4km.gguf --preset q4_k_m
+```
+
 ---
 
 ## 支援的量化預設規格
