@@ -335,11 +335,15 @@ LLMZIP 原生內建零依賴 MCP 伺服器（`llmzip mcp`），可直接加入�
 
 ## 開發路線圖
 
-- [x] v0.1.0：零暫存檔 SafeTensors 串流引擎，支援 GGUF 與 NVFP4。
-- [x] Rayon 多核心並行批次量化與自適應線路調節。
-- [x] 密碼學原子提交鎖與 `< 4KB` Micro-WAL 斷點續傳。
-- [ ] v0.2.0：原生內建 Hugging Face 多路並行 Range 串流下載器。
-- [ ] v0.3.0：提供 Ollama 與 `llama.cpp` 專屬拉取插件（`/models/pull` 邊載邊轉）。
+- [x] **v0.1.0**：零暫存檔 SafeTensors 串流引擎，支援 GGUF 與 NVFP4。
+  - Rayon 多核心並行批次量化與自適應線路調節。
+  - 密碼學原子提交鎖與 `< 4KB` Micro-WAL 斷點續傳。
+- [x] **v0.2.0**：雲端物件儲存、SafeTensors 逆向轉出與生態延伸。
+  - S3 / Cloudflare R2 / MinIO 零暫存串流直寫 (`s3://`) 與 RAII Abort 自動守衛。
+  - SafeTensors 雙向逆向反量化轉出 (`llmzip dequantize`) 與多分片索引生成。
+  - 官方 Python SDK (`llmzip-py` via PyO3)，串流期間主動釋放 GIL。
+  - 官方輕量多階段 Docker 映像檔與 GitHub Actions 多平臺 Wheel 自動建置。
+- [ ] **v0.3.0**：原生 Hugging Face 多路並行 Range 串流下載器與 Ollama / `llama.cpp` 專屬拉取插件（`/models/pull` 邊載邊轉）。
 
 ---
 

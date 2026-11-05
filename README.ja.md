@@ -335,11 +335,15 @@ Hugging Face からモデルを取得または GGUF に変換する際は、デ�
 
 ## ロードマップ
 
-- [x] v0.1.0：一時ファイル完全ゼロのSafeTensorsストリーミング基盤（GGUF / NVFP4対応）。
-- [x] RayonマルチスレッドSIMDバッチパイプライン＆回線適応プロファイル。
-- [x] 暗号コミットロック＆ `< 4KB` Micro-WALレジューム機構。
-- [ ] v0.2.0：Hugging Face直接接続の並列Rangeダウンローダー内蔵。
-- [ ] v0.3.0：Ollamaおよび `llama.cpp` 向けストリーミング取得プラグイン（`/models/pull` でのインプレース変換）。
+- [x] **v0.1.0**：一時ファイル完全ゼロのSafeTensorsストリーミング基盤（GGUF / NVFP4対応）。
+  - RayonマルチスレッドSIMDバッチパイプライン＆回線適応プロファイル。
+  - 暗号コミットロック＆ `< 4KB` Micro-WALレジューム機構。
+- [x] **v0.2.0**：クラウドオブジェクトストレージ、SafeTensors逆量子化エクスポート、エコシステム拡張。
+  - S3 / Cloudflare R2 / MinIO への直接ストリーミング直書き (`s3://`) と RAII Abort ガード。
+  - SafeTensors 逆量子化エクスポート (`llmzip dequantize`) とマルチシャードインデックス生成。
+  - 公式 Python SDK (`llmzip-py` via PyO3)、処理中の GIL 自動解放対応。
+  - 公式マルチステージ Docker コンテナおよび GitHub Actions マルチプラットフォーム Wheel CI。
+- [ ] **v0.3.0**：Hugging Face直接接続の並列Rangeダウンローダー内蔵および Ollama / `llama.cpp` 向けストリーミング取得プラグイン（`/models/pull` でのインプレース変換）。
 
 ---
 

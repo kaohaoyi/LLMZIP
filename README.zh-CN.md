@@ -335,11 +335,15 @@ LLMZIP 原生内置零依赖 MCP 服务器（`llmzip mcp`），可直接加入�
 
 ## 开发路线图
 
-- [x] v0.1.0：零暂存文件 SafeTensors 流式引擎，支持 GGUF 与 NVFP4。
-- [x] Rayon 多核并行批处理量化与自适应线路调节。
-- [x] 密码学原子提交锁与 `< 4KB` Micro-WAL 断点续传。
-- [ ] v0.2.0：原生内置 Hugging Face 多路并行 Range 流式下载器。
-- [ ] v0.3.0：提供 Ollama 与 `llama.cpp` 专属拉取插件（`/models/pull` 边下边转）。
+- [x] **v0.1.0**：零暂存文件 SafeTensors 流式引擎，支持 GGUF 与 NVFP4。
+  - Rayon 多核并行批处理量化与自适应线路调节。
+  - 密码学原子提交锁与 `< 4KB` Micro-WAL 断点续传。
+- [x] **v0.2.0**：云端对象存储、SafeTensors 反向导出与生态扩展。
+  - S3 / Cloudflare R2 / MinIO 零暂存流式直写 (`s3://`) 与 RAII Abort 自动防护。
+  - SafeTensors 双向反向量化导出 (`llmzip dequantize`) 与多分片索引生成。
+  - 官方 Python SDK (`llmzip-py` via PyO3)，流式期间主动释放 GIL。
+  - 官方轻量多阶段 Docker 镜像与 GitHub Actions 多平台 Wheel 自动化构建。
+- [ ] **v0.3.0**：原生 Hugging Face 多路并行 Range 流式下载器与 Ollama / `llama.cpp` 专属拉取插件（`/models/pull` 边下边转）。
 
 ---
 

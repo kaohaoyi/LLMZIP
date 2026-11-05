@@ -335,11 +335,15 @@ Hugging Face에서 모델 가중치를 다운로드하거나 GGUF로 변환할 �
 
 ## 로드맵
 
-- [x] v0.1.0: 임시 파일 없는 SafeTensors 스트리밍 코어 엔진 (GGUF 및 NVFP4 지원).
-- [x] Rayon 멀티스레드 SIMD 배치 파이프라인 및 회선 적응형 튜닝.
-- [x] 암호학적 원자적 커밋 락 및 `< 4KB` Micro-WAL 복구 시스템.
-- [ ] v0.2.0: Hugging Face 직접 연결 멀티파트 Range 스트리밍 클라이언트 내장.
-- [ ] v0.3.0: Ollama 및 `llama.cpp` 전용 풀 플러그인 (`/models/pull` 인플레이스 변환).
+- [x] **v0.1.0**: 임시 파일 없는 SafeTensors 스트리밍 코어 엔진 (GGUF 및 NVFP4 지원).
+  - Rayon 멀티스레드 SIMD 배치 파이프라인 및 회선 적응형 튜닝.
+  - 암호학적 원자적 커밋 락 및 `< 4KB` Micro-WAL 복구 시스템.
+- [x] **v0.2.0**: 클라우드 객체 스토리지, SafeTensors 역양자화 익스포트 및 생태계 확장.
+  - S3 / Cloudflare R2 / MinIO 직접 스트리밍 쓰기 (`s3://`) 및 RAII Abort 안전 가드.
+  - SafeTensors 양방향 역양자화 익스포트 (`llmzip dequantize`) 및 멀티 샤드 인덱싱.
+  - 공식 Python SDK (`llmzip-py` via PyO3), 처리 중 GIL 자동 해제 지원.
+  - 공식 멀티스테이지 Docker 컨테이너 및 GitHub Actions 크로스 플랫폼 Wheel CI.
+- [ ] **v0.3.0**: Hugging Face 직접 연결 멀티파트 Range 스트리밍 클라이언트 내장 및 Ollama / `llama.cpp` 전용 풀 플러그인 (`/models/pull` 인플레이스 변환).
 
 ---
 

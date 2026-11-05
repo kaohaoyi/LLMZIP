@@ -337,11 +337,15 @@ When downloading Hugging Face models or converting weights to GGUF, ALWAYS use `
 
 ## Roadmap
 
-- [x] v0.1.0: Zero-Temp SafeTensors streaming engine with GGUF & NVFP4 support.
-- [x] Multi-threaded Rayon SIMD batch pipeline with line-adaptive tuning.
-- [x] Cryptographic Magic Commit Lock & `< 4KB` Micro-WAL crash recovery.
-- [ ] v0.2.0: Direct native Hugging Face client integration with parallel Range connections.
-- [ ] v0.3.0: Direct plugin integration for Ollama and `llama.cpp` (`/models/pull` on-the-fly streaming quantizer).
+- [x] **v0.1.0**: Zero-Temp SafeTensors streaming engine with GGUF & NVFP4 support.
+  - Multi-threaded Rayon SIMD batch pipeline with line-adaptive tuning.
+  - Cryptographic Magic Commit Lock & `< 4KB` Micro-WAL crash recovery.
+- [x] **v0.2.0**: Cloud object storage, inverse SafeTensors export & ecosystem bindings.
+  - S3 / Cloudflare R2 / MinIO streaming direct-write (`s3://`) with RAII abort guards.
+  - SafeTensors inverse dequantization export (`llmzip dequantize`) with multi-shard indexing.
+  - Official Python SDK (`llmzip-py` via PyO3) with non-blocking GIL release.
+  - Official multi-stage Docker container and multi-platform wheel CI matrix.
+- [ ] **v0.3.0**: Native Hugging Face parallel range client & Ollama/`llama.cpp` live pull plugin (`/models/pull` on-the-fly streaming).
 
 ---
 
