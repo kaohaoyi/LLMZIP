@@ -75,7 +75,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build release binaries
-        run: cargo build --workspace --release --target ${{ matrix.target }}
+        run: cargo build -p llmzip-cli -p llmzip-ffi --release --target ${{ matrix.target }}
 
       # Linux Packaging (tar.gz + .deb installer)
       - name: Package Linux
@@ -125,6 +125,7 @@ jobs:
           Compress-Archive -Path dist_staging_c\* -DestinationPath ${{ matrix.c_artifact }} -Force
           
           choco install nsis -y
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
           makensis /DOUT_FILE=${{ matrix.installer }} packaging\windows\installer.nsi
 
       - name: Upload artifacts to Release

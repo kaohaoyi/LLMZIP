@@ -35,7 +35,6 @@ Description: High-performance GGUF & Safetensors deduplication, semantic compres
  High-density chunk deduplication and instant runtime for local LLMs, resolving the double-space dilemma.
 EOF
 
-dpkg-deb --build "$PKG_DIR"
-mv "${PKG_DIR}.deb" "llmzip_${VERSION}_amd64.deb"
+dpkg-deb --build "$PKG_DIR" "llmzip_${VERSION}_amd64.deb"
 rm -rf "$PKG_DIR"
 echo "[✓] Built Debian package: llmzip_${VERSION}_amd64.deb"
