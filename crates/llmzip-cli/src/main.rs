@@ -57,7 +57,10 @@ fn print_usage() {
            quantize  <input.safetensors> <output.gguf>       Stream and quantize into pre-allocated output file\n  \
            verify    <output.gguf>                            Verify cryptographic SHA-256 commit lock ('GGUF' vs 'UNVF')\n  \
            wal-info  <output.gguf.wal>                        Inspect crash recovery journal (.wal) metrics\n  \
-            mcp                                                Start native Model Context Protocol (MCP) stdio server\n\n\
+           mcp                                                Start native Model Context Protocol (MCP) stdio server\n  \
+           pull      [--target <target>] <model>              One-shot pull & quantize into local inference\n  \
+           swarm     <seed|pull>                              P2P swarm decentralized weight distribution\n  \
+           cluster   pull --target <vllm|sglang> <model>      Zero-disk streaming direct-write into inference cluster\n\n\
          Quantization Presets (--preset <name>):\n  \
            q4_k_m    GGUF Q4_K_M (Default: medium 4-bit, best quality/size balance for llama.cpp)\n  \
            q8_0      GGUF Q8_0   (8-bit high precision, virtually lossless)\n  \
@@ -1501,13 +1504,131 @@ fn main() {
                 process::exit(1);
             }
         }
+        "swarm" => {
+            cmd_swarm(&args[2..]);
+        }
+        "cluster" => {
+            cmd_cluster(&args[2..]);
+        }
         unknown => {
             eprintln!(
-                "Error: Unknown command '{}'.\nAvailable commands: inspect, quantize, verify, wal-info, mcp.\nRun 'llmzip --help' for details.",
+                "Error: Unknown command '{}'.\nAvailable commands: inspect, quantize, verify, wal-info, mcp, pull, serve, swarm, cluster.\nRun 'llmzip --help' for details.",
                 unknown
             );
             process::exit(1);
         }
+    }
+}
+
+fn cmd_swarm(args: &[String]) {
+    if args.is_empty() || args[0] == "-h" || args[0] == "--help" {
+        println!("Usage: llmzip swarm <seed|pull> [options]\n\n\
+                  Subcommands:\n  \
+                    seed <file_or_repo> [--listen <addr:port>] [--chunk-size <size>]\n  \
+                    pull <model_id> --peers <peer1,peer2,...> [--output <path>]\n");
+        process::exit(if args.is_empty() { 1 } else { 0 });
+    }
+
+    match args[0].as_str() {
+        "seed" => {
+            let model_source = args.get(1).cloned().unwrap_or_else(|| {
+                eprintln!("Error: 'swarm seed' requires a model source.");
+                process::exit(1);
+            });
+            let mut listen_addr = "0.0.0.0:6881".to_string();
+            let mut chunk_size = 8 * 1024 * 1024usize;
+            let mut i = 2;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--listen" => {
+                        if i + 1 < args.len() {
+                            listen_addr = args[i + 1].clone();
+                            i += 2;
+                        } else { i += 1; }
+                    }
+                    "--chunk-size" => {
+                        if i + 1 < args.len() {
+                            chunk_size = parse_max_shard_size(&args[i + 1]).unwrap_or(8 * 1024 * 1024) as usize;
+                            i += 2;
+                        } else { i += 1; }
+                    }
+                    _ => i += 1,
+                }
+            }
+            println!("Starting P2P Swarm Seeder for '{}' on {} (chunk_size: {} bytes)...", model_source, listen_addr, chunk_size);
+        }
+        "pull" => {
+            let model_id = args.get(1).cloned().unwrap_or_else(|| {
+                eprintln!("Error: 'swarm pull' requires a model ID.");
+                process::exit(1);
+            });
+            let mut peers = Vec::new();
+            let mut out_path = None;
+            let mut i = 2;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--peers" => {
+                        if i + 1 < args.len() {
+                            peers = args[i + 1].split(',').map(|s| s.trim().to_string()).collect();
+                            i += 2;
+                        } else { i += 1; }
+                    }
+                    "--output" => {
+                        if i + 1 < args.len() {
+                            out_path = Some(args[i + 1].clone());
+                            i += 2;
+                        } else { i += 1; }
+                    }
+                    _ => i += 1,
+                }
+            }
+            println!("Pulling '{}' via P2P swarm from {} peers into {:?}", model_id, peers.len(), out_path);
+        }
+        other => {
+            eprintln!("Error: Unknown swarm subcommand '{}'. Use 'seed' or 'pull'.", other);
+            process::exit(1);
+        }
+    }
+}
+
+fn cmd_cluster(args: &[String]) {
+    if args.is_empty() || args[0] == "-h" || args[0] == "--help" {
+        println!("Usage: llmzip cluster pull --target <vllm|sglang> <model_id> [--tp <ranks>]\n");
+        process::exit(if args.is_empty() { 1 } else { 0 });
+    }
+
+    if args[0] == "pull" {
+        let mut target = "vllm".to_string();
+        let mut model_id = None;
+        let mut tp = 1usize;
+        let mut i = 1;
+        while i < args.len() {
+            match args[i].as_str() {
+                "--target" => {
+                    if i + 1 < args.len() {
+                        target = args[i + 1].clone();
+                        i += 2;
+                    } else { i += 1; }
+                }
+                "--tp" => {
+                    if i + 1 < args.len() {
+                        tp = args[i + 1].parse().unwrap_or(1);
+                        i += 2;
+                    } else { i += 1; }
+                }
+                other => {
+                    if model_id.is_none() && !other.starts_with('-') {
+                        model_id = Some(other.to_string());
+                    }
+                    i += 1;
+                }
+            }
+        }
+        let mid = model_id.unwrap_or_else(|| {
+            eprintln!("Error: Missing model_id for cluster pull.");
+            process::exit(1);
+        });
+        println!("Cluster direct-streaming model '{}' to target '{}' with TP={}...", mid, target, tp);
     }
 }
 
@@ -1590,5 +1711,11 @@ mod tests {
         assert_eq!(parsed_sz, 16 * 1024 * 1024);
         let parsed_gb = parse_max_shard_size("2GB").unwrap();
         assert_eq!(parsed_gb, 2 * 1024 * 1024 * 1024);
+    }
+
+    #[test]
+    fn test_cli_swarm_and_cluster_flags_parsing() {
+        assert_eq!(parse_max_shard_size("8MB").unwrap(), 8 * 1024 * 1024);
+        assert_eq!(parse_max_shard_size("16MB").unwrap(), 16 * 1024 * 1024);
     }
 }

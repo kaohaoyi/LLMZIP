@@ -5,8 +5,8 @@
 
 [![License: AGPL-3.0 / Commercial](https://img.shields.io/badge/License-AGPL%203.0%20%2F%20Commercial-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
-[![Version](https://img.shields.io/badge/version-0.3.0-green.svg)](Cargo.toml)
-[![Tests](https://img.shields.io/badge/tests-56%20passed-brightgreen.svg)](crates/llmzip-core/tests)
+[![Version](https://img.shields.io/badge/version-0.4.0-green.svg)](Cargo.toml)
+[![Tests](https://img.shields.io/badge/tests-66%20passed-brightgreen.svg)](crates/llmzip-core/tests)
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md)
 
@@ -296,6 +296,43 @@ llmzip.pull("Qwen/Qwen2.5-7B", target="ollama", preset="q4_k_m", concurrency=8)
 
 ---
 
+## オープンクラスター直接注入＆分散P2Pスウォーム (v0.4.0)
+
+### 1. vLLM＆SGLang ゼロディスク共有メモリ直接注入
+IPCおよび共有メモリを介してデコード済み重みをvLLM / SGLangワーカーメモリに直接流し込み、ディスクへの中間ファイル書き込みを一切排除します：
+
+```bash
+# テンソル並列 (TP=4) 対応で vLLM へ直接ストリーミング注入
+llmzip cluster pull --target vllm Qwen/Qwen2.5-7B --tp 4
+
+# SGLang 推論エンドポイントへ直接ストリーミング注入
+llmzip cluster pull --target sglang deepseek-ai/DeepSeek-V3 --tp 8
+```
+
+### 2. 非中央集権型フラット P2P スウォーム分散 (Flat P2P Swarm)
+ノード間で相互にチャンクをピアツーピア転送。8MBリアルタイムMerkle Rootによるポイズニング防止検証を内蔵し、メモリ内完結・一時ファイルゼロを実現：
+
+```bash
+# メモリ播種ノード (Seeder) の起動
+llmzip swarm seed Qwen/Qwen2.5-7B --listen 0.0.0.0:6881 --chunk-size 8M
+
+# ピア間からのモデル並行取得 (Leecher)
+llmzip swarm pull Qwen/Qwen2.5-7B --peers 192.168.1.10:6881,192.168.1.11:6881 --output ./qwen.gguf
+```
+
+### 3. Python SDK P2P スウォーム連携
+```python
+import llmzip
+
+# メモリチャンキングおよび Merkle Tree ルートハッシュ計算
+manifest_json = llmzip.swarm_seed("Qwen/Qwen2.5-7B", raw_weights_bytes)
+
+# ピアからのチャンク並行取得
+status = llmzip.swarm_pull("Qwen/Qwen2.5-7B", ["192.168.1.10:6881", "192.168.1.11:6881"])
+```
+
+---
+
 ## 対応量子化プリセット
 
 | プリセット名 | フォーマット | ブロック構成 | 特徴 |
@@ -429,10 +466,13 @@ Hugging Face からモデルを取得または GGUF に変換する際は、デ�
   - ローカル推論向けワンクリックPullプラグイン：Ollama（CLI直結＋Proxyサービスモード）、LM Studio、Jan 自動配置。
   - llama.cpp 専用名前付きパイプ（Windows Named Pipe / Unix FIFO）による完全オンメモリ直接推論。
   - DeepSeek ネイティブ推論（MLA Attention + SGLang）および Strata MoE 階層エキスパートオフロードエンジン連携。
-- [ ] **v0.4.0**：エンタープライズ本番クラスター推論＆P2P分散ストリーミング。
-  - vLLM および SGLang 本番サーバークラスター向け直接Pullプラグイン（Rayマルチノード／マルチGPU並行配信）。
-  - KServe / Triton Inference Server 向け中間ディスクレス即時ホットプラグ。
-  - P2P Swarm（分散スウォーム）による広帯域分散ウェイトストリーミング。
+- [x] **v0.4.0**：オープンクラスター直接注入＆分散P2Pスウォーム配信。
+  - vLLM および SGLang 向けゼロディスク共有メモリ／IPC ストリーミング注入（TP=2/4/8 対応）。
+  - Tokio TCP バイナリフレーミングおよび 8MB Merkle Root 改ざん防止検証付きフラット P2P スウォームプロトコル。
+  - Enterprise Edition (EE) とのコア整合性を維持しつつ、100% AGPL-3.0 境界を厳守。
+- [ ] **v0.5.0**：極限エッジ動的 In-VRAM ストリーミング推論（8GB VRAM で 100B+ モデルを実行）。
+  - 非同期デュアルバッファ Ping-Pong VRAM パイプライン（層単位の前方計算と重みプリロードを並行化）。
+  - 動的 MoE Top-2 アクティブエキスパート VRAM キャッシュ置換および RAII VRAM 解放ガード。
 
 ---
 

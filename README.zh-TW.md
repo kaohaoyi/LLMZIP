@@ -5,8 +5,8 @@
 
 [![License: AGPL-3.0 / Commercial](https://img.shields.io/badge/License-AGPL%203.0%20%2F%20Commercial-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
-[![Version](https://img.shields.io/badge/version-0.3.0-green.svg)](Cargo.toml)
-[![Tests](https://img.shields.io/badge/tests-56%20passed-brightgreen.svg)](crates/llmzip-core/tests)
+[![Version](https://img.shields.io/badge/version-0.4.0-green.svg)](Cargo.toml)
+[![Tests](https://img.shields.io/badge/tests-66%20passed-brightgreen.svg)](crates/llmzip-core/tests)
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md)
 
@@ -296,6 +296,43 @@ llmzip.pull("Qwen/Qwen2.5-7B", target="ollama", preset="q4_k_m", concurrency=8)
 
 ---
 
+## 開源叢集直灌與無中心對等蜂群 (v0.4.0)
+
+### 1. vLLM 與 SGLang 零磁碟共享記憶體直灌
+透過 IPC 與共享記憶體將解碼權重直接灌入 vLLM / SGLang Worker 記憶體，無需任何中介檔案落盤：
+
+```bash
+# 直接串流直灌至 vLLM，支援張量並行 (TP=4)
+llmzip cluster pull --target vllm Qwen/Qwen2.5-7B --tp 4
+
+# 直接串流直灌至 SGLang 推論端點
+llmzip cluster pull --target sglang deepseek-ai/DeepSeek-V3 --tp 8
+```
+
+### 2. 去中心化扁平 P2P 蜂群分發 (Flat P2P Swarm)
+多節點間對等互傳分塊，內建 8MB 即時 Merkle Root 防投毒校驗，純記憶體流動、零磁碟暫存：
+
+```bash
+# 啟動記憶體播種節點 (Seeder)
+llmzip swarm seed Qwen/Qwen2.5-7B --listen 0.0.0.0:6881 --chunk-size 8M
+
+# 跨對等點拉取模型 (Leecher)
+llmzip swarm pull Qwen/Qwen2.5-7B --peers 192.168.1.10:6881,192.168.1.11:6881 --output ./qwen.gguf
+```
+
+### 3. Python SDK P2P 蜂群介面
+```python
+import llmzip
+
+# 記憶體分塊與 Merkle Tree 根雜湊計算
+manifest_json = llmzip.swarm_seed("Qwen/Qwen2.5-7B", raw_weights_bytes)
+
+# 對等點分片拉取
+status = llmzip.swarm_pull("Qwen/Qwen2.5-7B", ["192.168.1.10:6881", "192.168.1.11:6881"])
+```
+
+---
+
 ## 支援的量化預設規格
 
 | 預設名稱 | 目標格式 | 區塊元素數 | 規格特點 |
@@ -429,10 +466,13 @@ LLMZIP 原生內建零依賴 MCP 伺服器（`llmzip mcp`），可直接加入�
   - 本地推論框架一鍵拉取插件：支援 Ollama（CLI 直調 + Proxy 服務模式）、LM Studio、Jan 自動注入。
   - llama.cpp 專屬具名管道（Windows Named Pipe / Unix FIFO）零磁碟落盤即時推論。
   - DeepSeek 原生推論（MLA 注意力 + SGLang）與 Strata MoE 分層專家卸載引擎原生適配。
-- [ ] **v0.4.0**：生產級雲端伺服器推論叢集與 P2P 分發。
-  - vLLM 與 SGLang 伺服器級生產叢集原生拉取插件（支援 Ray 多節點／多 GPU 串流分發）。
-  - KServe / Triton Inference Server 企業級容器化模型服務即時熱插拔。
-  - P2P 蜂群（Swarm / BitTorrent-style）去中心化分散式權重流式分發。
+- [x] **v0.4.0**：開源推論叢集直灌與無中心對等蜂群分發。
+  - vLLM 與 SGLang 零磁碟共享記憶體／IPC 串流直灌，支援 TP=2/4/8。
+  - 扁平 P2P 蜂群分發協定，基於 Tokio TCP 二進位訊框與 8MB Merkle Root 防投毒校驗。
+  - 核心架構與企業版 (EE) 保持對齊，同時嚴守 100% AGPL-3.0 邊界。
+- [ ] **v0.5.0**：極限邊緣動態 In-VRAM 串流推論執行（8GB 顯存跑 100B+ 模型）。
+  - 非同步雙緩衝 Ping-Pong 顯存管線化（逐層前向計算與權重預載平行）。
+  - 動態 MoE Top-2 活躍專家顯存快取替換與 RAII VRAM 釋放守衛。
 
 ---
 

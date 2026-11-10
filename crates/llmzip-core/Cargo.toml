@@ -14,4 +14,6 @@ futures = "0.3"
 safetensors = "0.4"
 object_store = { version = "0.10", default-features = false, features = ["aws", "http"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json"] }
-tokio = { version = "1.38", features = ["rt-multi-thread", "net", "io-util", "sync", "macros"] }
+tokio = { version = "1.38", features = ["rt-multi-thread", "net", "io-util", "sync", "macros", "time"] }
+thiserror = "1.0"
+ring = "0.17"

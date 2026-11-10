@@ -1,4 +1,5 @@
 pub mod cloud;
+pub mod cluster;
 pub mod dequant;
 pub mod error;
 pub mod hasher;
@@ -11,4 +12,5 @@ pub mod preflight;
 pub mod quant;
 pub mod ringbuf;
 pub mod streamer;
+pub mod swarm;
 pub mod wal;

@@ -5,8 +5,8 @@
 
 [![License: AGPL-3.0 / Commercial](https://img.shields.io/badge/License-AGPL%203.0%20%2F%20Commercial-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
-[![Version](https://img.shields.io/badge/version-0.3.0-green.svg)](Cargo.toml)
-[![Tests](https://img.shields.io/badge/tests-56%20passed-brightgreen.svg)](crates/llmzip-core/tests)
+[![Version](https://img.shields.io/badge/version-0.4.0-green.svg)](Cargo.toml)
+[![Tests](https://img.shields.io/badge/tests-66%20passed-brightgreen.svg)](crates/llmzip-core/tests)
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md)
 
@@ -296,6 +296,43 @@ llmzip.pull("Qwen/Qwen2.5-7B", target="ollama", preset="q4_k_m", concurrency=8)
 
 ---
 
+## 오픈 클러스터 직접 주입 & 탈중앙화 P2P 스웜 (v0.4.0)
+
+### 1. vLLM & SGLang 제로 디스크 공유 메모리 직접 주입
+IPC 및 공유 메모리를 통해 디코딩된 가중치를 vLLM / SGLang 워커 메모리로 직접 주입하여 중간 파일 디스크 저장을 완전히 제거합니다:
+
+```bash
+# 텐서 병렬화(TP=4)를 지원하며 vLLM으로 직접 스트리밍 주입
+llmzip cluster pull --target vllm Qwen/Qwen2.5-7B --tp 4
+
+# SGLang 추론 엔드포인트로 직접 스트리밍 주입
+llmzip cluster pull --target sglang deepseek-ai/DeepSeek-V3 --tp 8
+```
+
+### 2. 탈중앙화 플랫 P2P 스웜 분산 (Flat P2P Swarm)
+노드 간에 청크를 P2P 방식으로 상호 전송하며, 8MB 실시간 Merkle Root 오염 방지 검증을 내장하여 순수 메모리 스트리밍 및 제로 임시 파일을 달성합니다:
+
+```bash
+# 메모리 시딩 노드 실행 (Seeder)
+llmzip swarm seed Qwen/Qwen2.5-7B --listen 0.0.0.0:6881 --chunk-size 8M
+
+# 피어 노드들로부터 모델 병렬 수신 (Leecher)
+llmzip swarm pull Qwen/Qwen2.5-7B --peers 192.168.1.10:6881,192.168.1.11:6881 --output ./qwen.gguf
+```
+
+### 3. Python SDK P2P 스웜 연동
+```python
+import llmzip
+
+# 메모리 청킹 및 Merkle Tree 루트 해시 계산
+manifest_json = llmzip.swarm_seed("Qwen/Qwen2.5-7B", raw_weights_bytes)
+
+# 피어 분할 청크 병렬 수신
+status = llmzip.swarm_pull("Qwen/Qwen2.5-7B", ["192.168.1.10:6881", "192.168.1.11:6881"])
+```
+
+---
+
 ## 지원 양자화 포맷 프리셋
 
 | 프리셋 이름 | 대상 포맷 | 블록 구성 | 특징 |
@@ -429,10 +466,13 @@ Hugging Face에서 모델 가중치를 다운로드하거나 GGUF로 변환할 �
   - 로컬 추론 원클릭 Pull 플러그인: Ollama (CLI 직접 호출 + Proxy 모드), LM Studio, Jan 자동 연동.
   - llama.cpp 전용 명명된 파이프 (Windows Named Pipe / Unix FIFO) 무디스크 실시간 스트리밍 추론.
   - DeepSeek 네이티브 추론 (MLA Attention + SGLang) 및 Strata MoE 계층형 전문가 오프로딩 엔진 연동.
-- [ ] **v0.4.0**: 프로덕션 서버 추론 클러스터 및 P2P 스웜 분산 스트리밍.
-  - vLLM 및 SGLang 엔터프라이즈 프로덕션 클러스터 풀 플러그인 (Ray 멀티 노드/멀티 GPU 스트리밍 분산).
-  - KServe / Triton Inference Server 중간 디스크 없는 실시간 핫플러그 배포.
-  - P2P 스웜(Swarm / BitTorrent 스타일) 분산 가중치 스트리밍 배포.
+- [x] **v0.4.0**: 오픈 클러스터 직접 주입 & 탈중앙화 P2P 스웜 분산.
+  - vLLM 및 SGLang 제로 디스크 공유 메모리 / IPC 스트리밍 주입 (TP=2/4/8 지원).
+  - Tokio TCP 바이너리 프레이밍 및 8MB Merkle Root 변조 방지 검증 기능의 플랫 P2P 스웜 프로토콜.
+  - Enterprise Edition (EE)과 코어 동기화를 유지하면서 100% AGPL-3.0 경계 엄수.
+- [ ] **v0.5.0**: 익스트림 엣지 동적 In-VRAM 스트리밍 추론 (8GB VRAM에서 100B+ 모델 구동).
+  - 비동기 듀얼 버퍼 핑퐁(Ping-Pong) VRAM 파이프라이닝 (레이어별 순방향 연산과 가중치 사전 로드 병렬화).
+  - 동적 MoE Top-2 활성 전문가 VRAM 캐시 교체 및 RAII VRAM 해제 가드.
 
 ---
 

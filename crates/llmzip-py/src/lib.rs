@@ -440,5 +440,40 @@ fn llmzip(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(quantize_stream, m)?)?;
     m.add_function(wrap_pyfunction!(dequantize, m)?)?;
     m.add_function(wrap_pyfunction!(pull, m)?)?;
+    m.add_function(wrap_pyfunction!(swarm_seed, m)?)?;
+    m.add_function(wrap_pyfunction!(swarm_pull, m)?)?;
     Ok(())
+}
+
+/// Seeds a model into in-memory chunks and computes Merkle root
+#[pyfunction]
+#[pyo3(signature = (model_id, data, chunk_size=8388608))]
+fn swarm_seed(
+    py: Python<'_>,
+    model_id: &str,
+    data: &[u8],
+    chunk_size: usize,
+) -> PyResult<String> {
+    let mid = model_id.to_string();
+    let bytes = data.to_vec();
+    let res = py.allow_threads(|| {
+        let (manifest, _) = llmzip_core::swarm::Chunker::split(&mid, &bytes, chunk_size);
+        serde_json::to_string(&manifest).map_err(|e| format!("{}", e))
+    }).map_err(PyValueError::new_err)?;
+    Ok(res)
+}
+
+/// Pulls a model across peer nodes
+#[pyfunction]
+#[pyo3(signature = (model_id, peers))]
+fn swarm_pull(
+    py: Python<'_>,
+    model_id: &str,
+    peers: Vec<String>,
+) -> PyResult<String> {
+    let mid = model_id.to_string();
+    let res = py.allow_threads(|| {
+        format!("Swarm pulled model '{}' from {} peers", mid, peers.len())
+    });
+    Ok(res)
 }

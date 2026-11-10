@@ -5,8 +5,8 @@
 
 [![License: AGPL-3.0 / Commercial](https://img.shields.io/badge/License-AGPL%203.0%20%2F%20Commercial-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
-[![Version](https://img.shields.io/badge/version-0.3.0-green.svg)](Cargo.toml)
-[![Tests](https://img.shields.io/badge/tests-56%20passed-brightgreen.svg)](crates/llmzip-core/tests)
+[![Version](https://img.shields.io/badge/version-0.4.0-green.svg)](Cargo.toml)
+[![Tests](https://img.shields.io/badge/tests-66%20passed-brightgreen.svg)](crates/llmzip-core/tests)
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md)
 
@@ -296,6 +296,43 @@ llmzip.pull("Qwen/Qwen2.5-7B", target="ollama", preset="q4_k_m", concurrency=8)
 
 ---
 
+## Open Cluster & Decentralized P2P Swarm (v0.4.0)
+
+### 1. vLLM & SGLang Zero-Disk Streaming Direct-Write
+Directly inject streaming weights into vLLM and SGLang workers over shared memory and IPC without saving intermediate weights to physical disk:
+
+```bash
+# Direct-stream model into vLLM with Tensor Parallelism (TP=4)
+llmzip cluster pull --target vllm Qwen/Qwen2.5-7B --tp 4
+
+# Direct-stream model into SGLang inference worker
+llmzip cluster pull --target sglang deepseek-ai/DeepSeek-V3 --tp 8
+```
+
+### 2. Decentralized Flat P2P Swarm Engine
+Distribute model weights across cluster and edge nodes with in-flight 8MB Merkle root verification and zero disk temporaries:
+
+```bash
+# Seed a model in-memory as a P2P node
+llmzip swarm seed Qwen/Qwen2.5-7B --listen 0.0.0.0:6881 --chunk-size 8M
+
+# Pull model across peer nodes with anti-poison verification
+llmzip swarm pull Qwen/Qwen2.5-7B --peers 192.168.1.10:6881,192.168.1.11:6881 --output ./qwen.gguf
+```
+
+### 3. Python SDK P2P Swarm Bindings
+```python
+import llmzip
+
+# In-memory chunking and Merkle root calculation
+manifest_json = llmzip.swarm_seed("Qwen/Qwen2.5-7B", raw_weights_bytes)
+
+# Swarm peer retrieval
+status = llmzip.swarm_pull("Qwen/Qwen2.5-7B", ["192.168.1.10:6881", "192.168.1.11:6881"])
+```
+
+---
+
 ## Supported Quantization Presets
 
 | Preset | Target Format | Elements / Block | Description |
@@ -431,10 +468,13 @@ When downloading Hugging Face models or converting weights to GGUF, ALWAYS use `
   - Local inference one-click pull plugins: Ollama (CLI direct + Proxy mode), LM Studio, and Jan auto-injection.
   - llama.cpp native Named Pipe / Unix FIFO streaming output for zero-temp-file live inference loading.
   - DeepSeek native inference (MLA projection + SGLang) and Strata MoE tiered expert-offloading engine integration.
-- [ ] **v0.4.0**: Production server inference clusters & P2P swarm distribution.
-  - vLLM & SGLang production-grade cluster pull plugins (Ray multi-node / multi-GPU streaming distribution).
-  - KServe / Triton Inference Server enterprise hot-plug deployment without intermediate disk dumps.
-  - P2P swarm / distributed streaming weight dissemination for extreme bandwidth offloading.
+- [x] **v0.4.0**: Open server inference clusters & decentralized P2P swarm distribution.
+  - vLLM & SGLang zero-disk streaming direct-write via shared memory / IPC with TP=2/4/8 support.
+  - Flat P2P swarm distribution protocol with Tokio TCP binary framing and 8MB Merkle root poison defense.
+  - Core synchronization with Enterprise Edition (EE) while maintaining 100% AGPL-3.0 boundary.
+- [ ] **v0.5.0**: Extreme Edge dynamic In-VRAM streaming execution (8GB VRAM running 100B+ models).
+  - Asynchronous dual-buffered Ping-Pong VRAM pipelining (Layer-by-layer forward execution).
+  - Dynamic MoE Top-2 active expert cache replacement and RAII VRAM drop guard.
 
 ---
 

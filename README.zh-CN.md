@@ -5,8 +5,8 @@
 
 [![License: AGPL-3.0 / Commercial](https://img.shields.io/badge/License-AGPL%203.0%20%2F%20Commercial-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
-[![Version](https://img.shields.io/badge/version-0.3.0-green.svg)](Cargo.toml)
-[![Tests](https://img.shields.io/badge/tests-56%20passed-brightgreen.svg)](crates/llmzip-core/tests)
+[![Version](https://img.shields.io/badge/version-0.4.0-green.svg)](Cargo.toml)
+[![Tests](https://img.shields.io/badge/tests-66%20passed-brightgreen.svg)](crates/llmzip-core/tests)
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md)
 
@@ -296,6 +296,43 @@ llmzip.pull("Qwen/Qwen2.5-7B", target="ollama", preset="q4_k_m", concurrency=8)
 
 ---
 
+## 开源集群直灌与无中心对等蜂群 (v0.4.0)
+
+### 1. vLLM 与 SGLang 零磁盘共享内存直灌
+通过 IPC 与共享内存将解码权重直接灌入 vLLM / SGLang Worker 内存，无需任何中介文件落盘：
+
+```bash
+# 直接流式直灌至 vLLM，支持张量并行 (TP=4)
+llmzip cluster pull --target vllm Qwen/Qwen2.5-7B --tp 4
+
+# 直接流式直灌至 SGLang 推理端点
+llmzip cluster pull --target sglang deepseek-ai/DeepSeek-V3 --tp 8
+```
+
+### 2. 去中心化扁平 P2P 蜂群分发 (Flat P2P Swarm)
+多节点间对等互传分块，内置 8MB 即时 Merkle Root 防投毒校验，纯内存流动、零磁盘暂存：
+
+```bash
+# 启动内存播种节点 (Seeder)
+llmzip swarm seed Qwen/Qwen2.5-7B --listen 0.0.0.0:6881 --chunk-size 8M
+
+# 跨对等点拉取模型 (Leecher)
+llmzip swarm pull Qwen/Qwen2.5-7B --peers 192.168.1.10:6881,192.168.1.11:6881 --output ./qwen.gguf
+```
+
+### 3. Python SDK P2P 蜂群接口
+```python
+import llmzip
+
+# 内存分块与 Merkle Tree 根哈希计算
+manifest_json = llmzip.swarm_seed("Qwen/Qwen2.5-7B", raw_weights_bytes)
+
+# 对等点分片拉取
+status = llmzip.swarm_pull("Qwen/Qwen2.5-7B", ["192.168.1.10:6881", "192.168.1.11:6881"])
+```
+
+---
+
 ## 支持的量化预设规格
 
 | 预设名称 | 目标格式 | 块内元素数 | 规格特点 |
@@ -429,10 +466,13 @@ LLMZIP 原生内置零依赖 MCP 服务器（`llmzip mcp`），可直接加入�
   - 本地推理框架一键拉取插件：支持 Ollama（CLI 直调 + Proxy 服务模式）、LM Studio、Jan 自动注入。
   - llama.cpp 专属具名管道（Windows Named Pipe / Unix FIFO）零磁盘落盘即时推理。
   - DeepSeek 原生推理（MLA 注意力 + SGLang）与 Strata MoE 分层专家卸载引擎原生适配。
-- [ ] **v0.4.0**：生产级云端服务器推理集群与 P2P 分发。
-  - vLLM 与 SGLang 服务器级生产集群原生拉取插件（支持 Ray 多节点／多 GPU 流式分发）。
-  - KServe / Triton Inference Server 企业级容器化模型服务即时热插拔。
-  - P2P 蜂群（Swarm / BitTorrent-style）去中心化分布式权重流式分发。
+- [x] **v0.4.0**：开源推理集群直灌与无中心对等蜂群分发。
+  - vLLM 与 SGLang 零磁盘共享内存／IPC 流式直灌，支持 TP=2/4/8。
+  - 扁平 P2P 蜂群分发协议，基于 Tokio TCP 二进制帧与 8MB Merkle Root 防投毒校验。
+  - 核心架构与企业版 (EE) 保持对齐，同时严守 100% AGPL-3.0 边界。
+- [ ] **v0.5.0**：极限边缘动态 In-VRAM 流式推理执行（8GB 显存跑 100B+ 模型）。
+  - 异步双缓冲 Ping-Pong 显存管线化（逐层前向计算与权重预加载并行）。
+  - 动态 MoE Top-2 活跃专家显存缓存替换与 RAII VRAM 释放守卫。
 
 ---
 

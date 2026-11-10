@@ -86,6 +86,16 @@ pub enum LlmZipError {
         pipe_path: String,
         reason: String,
     },
+    /// Flat P2P Swarm distribution error (e.g. peer timeout, protocol mismatch, poison chunk).
+    SwarmError {
+        peer: String,
+        reason: String,
+    },
+    /// Cluster streaming direct-write error (vLLM / SGLang IPC, shared memory).
+    ClusterError {
+        target: String,
+        reason: String,
+    },
 }
 
 impl fmt::Display for LlmZipError {
@@ -163,6 +173,8 @@ impl fmt::Display for LlmZipError {
             Self::HfError { repo_id, reason } => write!(f, "[HF Error] Repo '{}': {}", repo_id, reason),
             Self::PluginError { target, reason } => write!(f, "[Plugin Error] Target '{}': {}", target, reason),
             Self::PipeError { pipe_path, reason } => write!(f, "[Pipe Error] Pipe '{}': {}", pipe_path, reason),
+            Self::SwarmError { peer, reason } => write!(f, "[Swarm Error] Peer '{}': {}", peer, reason),
+            Self::ClusterError { target, reason } => write!(f, "[Cluster Error] Target '{}': {}", target, reason),
         }
     }
 }
@@ -200,5 +212,20 @@ mod tests {
             reason: "broken pipe".to_string(),
         };
         assert!(pipe_err.to_string().contains("[Pipe Error] Pipe 'pipe://test'"));
+    }
+
+    #[test]
+    fn test_v040_error_display() {
+        let swarm_err = LlmZipError::SwarmError {
+            peer: "127.0.0.1:6881".to_string(),
+            reason: "poison chunk rejected".to_string(),
+        };
+        assert!(swarm_err.to_string().contains("[Swarm Error] Peer '127.0.0.1:6881'"));
+
+        let cluster_err = LlmZipError::ClusterError {
+            target: "vllm".to_string(),
+            reason: "shm buffer overflow".to_string(),
+        };
+        assert!(cluster_err.to_string().contains("[Cluster Error] Target 'vllm'"));
     }
 }

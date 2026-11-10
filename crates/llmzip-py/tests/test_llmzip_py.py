@@ -32,8 +32,10 @@ class TestLlmZipPy(unittest.TestCase):
         except ImportError:
             self.skipTest("llmzip module not compiled into Python site-packages")
 
-        self.assertEqual(llmzip.version(), "0.3.0")
+        self.assertEqual(llmzip.version(), "0.4.0")
         self.assertTrue(hasattr(llmzip, "pull"))
+        self.assertTrue(hasattr(llmzip, "swarm_seed"))
+        self.assertTrue(hasattr(llmzip, "swarm_pull"))
 
     def test_inspect_and_quantize_with_progress(self):
         try:
