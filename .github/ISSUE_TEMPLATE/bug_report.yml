@@ -1,0 +1,43 @@
+name: Bug Report
+description: Report a crash, corrupt output, or unexpected behavior
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the issue and what you expected instead.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: LLMZIP version
+      description: Output of `llmzip --version` or git commit hash.
+      placeholder: "v0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS & Architecture
+      placeholder: "Windows 11 ARM64 / Ubuntu 24.04 x86_64 / macOS 15 arm64"
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Command & Output
+      description: Exact command executed and full error log.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: model
+    attributes:
+      label: Model / Input Details
+      description: Model repo, quantization preset, and whether the file stayed locked as UNVF or committed as GGUF.

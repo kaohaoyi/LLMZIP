@@ -1,0 +1,19 @@
+name: Feature Request
+description: Propose a new quant format, runtime target, or CLI option
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / Use Case
+      description: What workflow or hardware constraint does this solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Behavior
+      description: Expected CLI flags, format behavior, or API changes.
+    validations:
+      required: true
