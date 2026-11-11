@@ -125,8 +125,13 @@ jobs:
           Compress-Archive -Path dist_staging_c\* -DestinationPath ${{ matrix.c_artifact }} -Force
           
           choco install nsis -y
-          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-          makensis /DOUT_FILE=${{ matrix.installer }} packaging\windows\installer.nsi || echo "NSIS build optional fallback"
+          $makensis = "C:\Program Files (x86)\NSIS\makensis.exe"
+          if (Test-Path $makensis) {
+            & $makensis "/DOUT_FILE=${{ matrix.installer }}" packaging\windows\installer.nsi
+          } else {
+            Write-Warning "NSIS not found at standard path, skipping .exe setup"
+          }
+          $LASTEXITCODE = 0
           
       - name: Upload artifacts to Release
         uses: softprops/action-gh-release@v2
