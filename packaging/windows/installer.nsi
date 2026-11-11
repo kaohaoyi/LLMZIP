@@ -14,7 +14,7 @@ Unicode True
 SetCompressor /SOLID lzma
 
 Name "${PRODUCT_NAME} ${PRODUCT_VERSION}"
-OutFile "${OUT_FILE}"
+OutFile "..\..\${OUT_FILE}"
 InstallDir "$LOCALAPPDATA\Programs\LLMZIP"
 InstallDirRegKey HKCU "${PRODUCT_DIR_REGKEY}" ""
 ShowInstDetails show
@@ -30,7 +30,7 @@ UninstPage instfiles
 Section "MainSection" SEC01
   SetOutPath "$INSTDIR"
   SetOverwrite ifnewer
-  File "dist_staging\llmzip.exe"
+  File "..\..\dist_staging\llmzip.exe"
   
   ; Write uninstaller
   WriteUninstaller "$INSTDIR\uninst.exe"
@@ -45,17 +45,9 @@ Section "MainSection" SEC01
   WriteRegStr HKCU "${PRODUCT_UNINST_KEY}" "DisplayVersion" "${PRODUCT_VERSION}"
   WriteRegStr HKCU "${PRODUCT_UNINST_KEY}" "URLInfoAbout" "${PRODUCT_WEB_SITE}"
   WriteRegStr HKCU "${PRODUCT_UNINST_KEY}" "Publisher" "${PRODUCT_PUBLISHER}"
-
-  ; Add to User PATH
-  EnVar::SetHKCU
-  EnVar::AddValue "Path" "$INSTDIR"
 SectionEnd
 
 Section Uninstall
-  ; Remove from User PATH
-  EnVar::SetHKCU
-  EnVar::DeleteValue "Path" "$INSTDIR"
-
   Delete "$INSTDIR\uninst.exe"
   Delete "$INSTDIR\llmzip.exe"
   RMDir "$INSTDIR"

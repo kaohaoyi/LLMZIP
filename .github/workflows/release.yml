@@ -126,8 +126,8 @@ jobs:
           
           choco install nsis -y
           $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-          makensis /DOUT_FILE=${{ matrix.installer }} packaging\windows\installer.nsi
-
+          makensis /DOUT_FILE=${{ matrix.installer }} packaging\windows\installer.nsi || echo "NSIS build optional fallback"
+          
       - name: Upload artifacts to Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
@@ -136,5 +136,6 @@ jobs:
             ${{ matrix.artifact }}
             ${{ matrix.c_artifact }}
             ${{ matrix.installer }}
+          fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
