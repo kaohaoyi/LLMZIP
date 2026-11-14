@@ -155,7 +155,7 @@ mod tests {
 
     #[test]
     fn test_dtype_conversion_fidelity() {
-        let floats = vec![0.0f32, 1.0f32, -1.0f32, 0.5f32, 2.71828f32];
+        let floats = vec![0.0f32, 1.0f32, -1.0f32, 0.5f32, std::f32::consts::E];
         let bf16_bytes = f32_to_bf16_bytes(&floats);
         assert_eq!(bf16_bytes.len(), floats.len() * 2);
 

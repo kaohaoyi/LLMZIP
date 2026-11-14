@@ -690,7 +690,7 @@ fn cmd_pull(
 ) -> Result<(), Box<dyn std::error::Error>> {
     match target.to_ascii_lowercase().as_str() {
         "ollama" => {
-            let pure_model = repo_id.split('/').last().unwrap_or(repo_id);
+            let pure_model = repo_id.split('/').next_back().unwrap_or(repo_id);
             let mut temp_out = std::env::temp_dir();
             temp_out.push(format!("llmzip_pull_{}.gguf", std::process::id()));
 

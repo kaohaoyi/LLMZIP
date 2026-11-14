@@ -19,45 +19,35 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact: llmzip-v0.1.0-x86_64-unknown-linux-gnu.tar.gz
-            c_artifact: llmzip-c-api-v0.1.0-x86_64-unknown-linux-gnu.tar.gz
-            installer: llmzip_0.1.0_amd64.deb
+            name: x86_64-unknown-linux-gnu
             binary: target/x86_64-unknown-linux-gnu/release/llmzip
             cdylib: target/x86_64-unknown-linux-gnu/release/libllmzip_ffi.so
             platform: linux
 
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact: llmzip-v0.1.0-aarch64-apple-darwin.tar.gz
-            c_artifact: llmzip-c-api-v0.1.0-aarch64-apple-darwin.tar.gz
-            installer: llmzip-0.1.0-aarch64-apple-darwin.pkg
+            name: aarch64-apple-darwin
             binary: target/aarch64-apple-darwin/release/llmzip
             cdylib: target/aarch64-apple-darwin/release/libllmzip_ffi.dylib
             platform: macos
 
           - os: macos-13
             target: x86_64-apple-darwin
-            artifact: llmzip-v0.1.0-x86_64-apple-darwin.tar.gz
-            c_artifact: llmzip-c-api-v0.1.0-x86_64-apple-darwin.tar.gz
-            installer: llmzip-0.1.0-x86_64-apple-darwin.pkg
+            name: x86_64-apple-darwin
             binary: target/x86_64-apple-darwin/release/llmzip
             cdylib: target/x86_64-apple-darwin/release/libllmzip_ffi.dylib
             platform: macos
 
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact: llmzip-v0.1.0-windows-x64.zip
-            c_artifact: llmzip-c-api-v0.1.0-windows-x64.zip
-            installer: llmzip-v0.1.0-windows-x64-setup.exe
+            name: windows-x64
             binary: target/x86_64-pc-windows-msvc/release/llmzip.exe
             cdylib: target/x86_64-pc-windows-msvc/release/llmzip_ffi.dll
             platform: windows
 
           - os: windows-latest
             target: aarch64-pc-windows-msvc
-            artifact: llmzip-v0.1.0-windows-arm64.zip
-            c_artifact: llmzip-c-api-v0.1.0-windows-arm64.zip
-            installer: llmzip-v0.1.0-windows-arm64-setup.exe
+            name: windows-arm64
             binary: target/aarch64-pc-windows-msvc/release/llmzip.exe
             cdylib: target/aarch64-pc-windows-msvc/release/llmzip_ffi.dll
             platform: windows
@@ -81,53 +71,63 @@ jobs:
       - name: Package Linux
         if: ${{ matrix.platform == 'linux' }}
         run: |
+          RAW_TAG="${GITHUB_REF_NAME:-v0.2.0}"
+          CLEAN_VER="${RAW_TAG#v}"
+          
           mkdir -p dist_staging/bin dist_staging_c
           cp ${{ matrix.binary }} dist_staging/
-          tar -czf ${{ matrix.artifact }} -C dist_staging llmzip
+          tar -czf "llmzip-${RAW_TAG}-${{ matrix.name }}.tar.gz" -C dist_staging llmzip
           
           mkdir -p dist_staging_c/include dist_staging_c/lib
           cp include/llmzip.h dist_staging_c/include/
           cp ${{ matrix.cdylib }} dist_staging_c/lib/
-          tar -czf ${{ matrix.c_artifact }} -C dist_staging_c include lib
+          tar -czf "llmzip-c-api-${RAW_TAG}-${{ matrix.name }}.tar.gz" -C dist_staging_c include lib
           
           chmod +x packaging/linux/make_deb.sh
-          ./packaging/linux/make_deb.sh
+          ./packaging/linux/make_deb.sh "$CLEAN_VER"
 
       # macOS Packaging (tar.gz + .pkg installer)
       - name: Package macOS
         if: ${{ matrix.platform == 'macos' }}
         run: |
+          RAW_TAG="${GITHUB_REF_NAME:-v0.2.0}"
+          CLEAN_VER="${RAW_TAG#v}"
+          
           mkdir -p dist_staging/bin dist_staging_c
           cp ${{ matrix.binary }} dist_staging/
-          tar -czf ${{ matrix.artifact }} -C dist_staging llmzip
+          tar -czf "llmzip-${RAW_TAG}-${{ matrix.name }}.tar.gz" -C dist_staging llmzip
           
           mkdir -p dist_staging_c/include dist_staging_c/lib
           cp include/llmzip.h dist_staging_c/include/
           cp ${{ matrix.cdylib }} dist_staging_c/lib/
-          tar -czf ${{ matrix.c_artifact }} -C dist_staging_c include lib
+          tar -czf "llmzip-c-api-${RAW_TAG}-${{ matrix.name }}.tar.gz" -C dist_staging_c include lib
           
           chmod +x packaging/macos/make_pkg.sh
-          ./packaging/macos/make_pkg.sh ${{ matrix.target }}
+          ./packaging/macos/make_pkg.sh "${{ matrix.target }}" "$CLEAN_VER"
 
       # Windows Packaging (zip + NSIS .exe setup)
       - name: Package Windows
         if: ${{ matrix.platform == 'windows' }}
         shell: pwsh
         run: |
+          $rawTag = if ($env:GITHUB_REF_NAME) { $env:GITHUB_REF_NAME } else { "v0.2.0" }
+          $cleanVer = $rawTag.TrimStart('v')
+          
           New-Item -ItemType Directory -Path dist_staging -Force | Out-Null
           Copy-Item "${{ matrix.binary }}" -Destination dist_staging\llmzip.exe
-          Compress-Archive -Path dist_staging\llmzip.exe -DestinationPath ${{ matrix.artifact }} -Force
+          Compress-Archive -Path dist_staging\llmzip.exe -DestinationPath "llmzip-$rawTag-${{ matrix.name }}.zip" -Force
           
           New-Item -ItemType Directory -Path dist_staging_c\include -Force | Out-Null
           New-Item -ItemType Directory -Path dist_staging_c\lib -Force | Out-Null
           Copy-Item "include\llmzip.h" -Destination dist_staging_c\include\llmzip.h
           Copy-Item "${{ matrix.cdylib }}" -Destination dist_staging_c\lib\llmzip_ffi.dll
-          Compress-Archive -Path dist_staging_c\* -DestinationPath ${{ matrix.c_artifact }} -Force
+          Compress-Archive -Path dist_staging_c\* -DestinationPath "llmzip-c-api-$rawTag-${{ matrix.name }}.zip" -Force
           
           choco install nsis -y
           $makensis = "C:\Program Files (x86)\NSIS\makensis.exe"
+          $installerName = "llmzip-$rawTag-${{ matrix.name }}-setup.exe"
           if (Test-Path $makensis) {
-            & $makensis "/DOUT_FILE=${{ matrix.installer }}" packaging\windows\installer.nsi
+            & $makensis "/DOUT_FILE=$installerName" "/DPRODUCT_VERSION=$cleanVer" packaging\windows\installer.nsi
           } else {
             Write-Warning "NSIS not found at standard path, skipping .exe setup"
           }
@@ -138,9 +138,10 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            ${{ matrix.artifact }}
-            ${{ matrix.c_artifact }}
-            ${{ matrix.installer }}
+            llmzip-*
+            *.deb
+            *.pkg
+            *-setup.exe
           fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

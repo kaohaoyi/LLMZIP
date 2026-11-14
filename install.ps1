@@ -1,4 +1,4 @@
-# LLMZIP Agent Automatic Installer for Windows PowerShell
+﻿# LLMZIP Agent Automatic Installer for Windows PowerShell
 $ErrorActionPreference = "Stop"
 
 $Repo = "kaohaoyi/LLMZIP"
@@ -9,16 +9,17 @@ if (!(Test-Path $InstallDir)) {
 }
 
 # Architecture detection
+$Tag = if ($env:LLMZIP_VERSION) { $env:LLMZIP_VERSION } else { "v0.2.0" }
 $Arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLower()
 if ($Arch -eq "arm64" -or $env:PROCESSOR_ARCHITECTURE -eq "ARM64") {
     $TargetArch = "arm64"
-    $ZipName = "llmzip-v0.1.0-windows-arm64.zip"
+    $ZipName = "llmzip-$Tag-windows-arm64.zip"
 } else {
     $TargetArch = "x64"
-    $ZipName = "llmzip-v0.1.0-windows-x64.zip"
+    $ZipName = "llmzip-$Tag-windows-x64.zip"
 }
 
-$Url = "https://github.com/$Repo/releases/download/v0.1.0/$ZipName"
+$Url = "https://github.com/$Repo/releases/download/$Tag/$ZipName"
 $TempZip = "$env:TEMP\llmzip.zip"
 
 Write-Host "[*] Detected Windows Architecture: $TargetArch" -ForegroundColor Cyan

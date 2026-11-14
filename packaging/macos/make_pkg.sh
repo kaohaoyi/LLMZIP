@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -e
 
-VERSION="0.1.0"
-IDENTIFIER="com.kaohaoyi.llmzip"
 TARGET_NAME="$1" # e.g. aarch64-apple-darwin or x86_64-apple-darwin
+VERSION="${2:-${VERSION:-0.2.0}}"
+IDENTIFIER="com.kaohaoyi.llmzip"
 
 ROOT_DIR="pkg_root"
 rm -rf "$ROOT_DIR"

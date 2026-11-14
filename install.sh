@@ -27,8 +27,9 @@ case "$OS" in
     ;;
 esac
 
-ASSET="llmzip-v0.1.0-${TARGET}.tar.gz"
-URL="https://github.com/${REPO}/releases/download/v0.1.0/${ASSET}"
+TAG="${LLMZIP_VERSION:-v0.2.0}"
+ASSET="llmzip-${TAG}-${TARGET}.tar.gz"
+URL="https://github.com/${REPO}/releases/download/${TAG}/${ASSET}"
 
 echo "[*] Downloading LLMZIP for ${TARGET}..."
 if command -v curl >/dev/null 2>&1; then

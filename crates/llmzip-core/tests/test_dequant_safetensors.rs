@@ -79,3 +79,27 @@ fn test_safetensors_sharding_and_index_json_compatibility() {
 
     let _ = fs::remove_dir_all(&tmp);
 }
+
+#[test]
+fn test_reject_unverified_unvf_dequant() {
+    use llmzip_core::dequant::load_and_dequantize_gguf;
+    use llmzip_core::layout::GGUF_MAGIC_UNVERIFIED;
+    use std::io::Write;
+
+    let tmp = env::temp_dir().join(format!("llmzip_unvf_test_{}", std::process::id()));
+    let _ = fs::create_dir_all(&tmp);
+    let fake_unvf = tmp.join("corrupt.unverified");
+
+    let mut f = fs::File::create(&fake_unvf).unwrap();
+    f.write_all(&GGUF_MAGIC_UNVERIFIED).unwrap();
+    f.write_all(&3u32.to_le_bytes()).unwrap(); // GGUF version 3
+    f.flush().unwrap();
+    drop(f);
+
+    let res = load_and_dequantize_gguf(&fake_unvf, DequantDtype::BF16);
+    assert!(res.is_err(), "Expected dequantization to reject UNVF magic file");
+    let err_msg = format!("{}", res.err().unwrap());
+    assert!(err_msg.contains("unverified ('UNVF')"));
+
+    let _ = fs::remove_dir_all(&tmp);
+}

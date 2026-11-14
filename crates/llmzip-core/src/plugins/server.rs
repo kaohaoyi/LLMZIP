@@ -137,7 +137,7 @@ pub async fn run_ollama_proxy(config: OllamaProxyConfig) -> Result<()> {
                     Ok(path) => {
                         send_ndjson_chunk(&mut socket, r#"{"status":"injecting into ollama blobs and manifests"}"#).await;
                         let tag = "latest";
-                        let pure_name = model_name.split('/').last().unwrap_or(model_name);
+                        let pure_name = model_name.split('/').next_back().unwrap_or(model_name);
                         let _ = plugin.inject_model(pure_name, tag, &path);
                         let _ = fs::remove_file(&temp_gguf);
                         send_ndjson_chunk(&mut socket, r#"{"status":"success"}"#).await;

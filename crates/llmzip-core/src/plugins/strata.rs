@@ -40,7 +40,7 @@ impl StrataPlugin {
                 reason: "num_experts must be greater than 0".to_string(),
             });
         }
-        if moe_raw_bytes.len() % num_experts != 0 {
+        if !moe_raw_bytes.len().is_multiple_of(num_experts) {
             return Err(LlmZipError::PluginError {
                 target: "strata".to_string(),
                 reason: format!(

@@ -1,14 +1,16 @@
 ; LLMZIP NSIS Windows Installer Script
 Unicode True
 !define PRODUCT_NAME "LLMZIP"
-!define PRODUCT_VERSION "0.1.0"
+!ifndef PRODUCT_VERSION
+  !define PRODUCT_VERSION "0.2.0"
+!endif
 !define PRODUCT_PUBLISHER "kaohaoyi"
 !define PRODUCT_WEB_SITE "https://github.com/kaohaoyi/LLMZIP"
 !define PRODUCT_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\llmzip.exe"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
 
 !ifndef OUT_FILE
-  !define OUT_FILE "llmzip-v0.1.0-windows-x64-setup.exe"
+  !define OUT_FILE "llmzip-v${PRODUCT_VERSION}-windows-x64-setup.exe"
 !endif
 
 SetCompressor /SOLID lzma

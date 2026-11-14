@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
-VERSION="0.1.0"
-ARCH="amd64"
+VERSION="${1:-${VERSION:-0.2.0}}"
+ARCH="${2:-${ARCH:-amd64}}"
 PKG_DIR="llmzip_${VERSION}_${ARCH}"
 
 rm -rf "$PKG_DIR"
@@ -35,6 +35,6 @@ Description: High-performance GGUF & Safetensors deduplication, semantic compres
  High-density chunk deduplication and instant runtime for local LLMs, resolving the double-space dilemma.
 EOF
 
-dpkg-deb --build "$PKG_DIR" "llmzip_${VERSION}_amd64.deb"
+dpkg-deb --build "$PKG_DIR" "llmzip_${VERSION}_${ARCH}.deb"
 rm -rf "$PKG_DIR"
-echo "[✓] Built Debian package: llmzip_${VERSION}_amd64.deb"
+echo "[✓] Built Debian package: llmzip_${VERSION}_${ARCH}.deb"

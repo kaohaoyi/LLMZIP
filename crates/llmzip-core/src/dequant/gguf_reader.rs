@@ -35,8 +35,8 @@ fn skip_metadata_value<R: Read + Seek>(reader: &mut R, val_type: u32) -> Result<
     match val_type {
         0 | 1 | 7 => { reader.seek(SeekFrom::Current(1))?; } // u8, i8, bool
         2 | 3 => { reader.seek(SeekFrom::Current(2))?; }     // u16, i16
-        4 | 5 | 6 => { reader.seek(SeekFrom::Current(4))?; } // u32, i32, f32
-        10 | 11 | 12 => { reader.seek(SeekFrom::Current(8))?; } // u64, i64, f64
+        4..=6 => { reader.seek(SeekFrom::Current(4))?; } // u32, i32, f32
+        10..=12 => { reader.seek(SeekFrom::Current(8))?; } // u64, i64, f64
         8 => {
             // String
             let mut len_buf = [0u8; 8];
@@ -91,7 +91,16 @@ pub fn load_and_dequantize_gguf(
 
     let mut magic = [0u8; 4];
     file.read_exact(&mut magic)?;
-    if magic != GGUF_MAGIC_VERIFIED && magic != GGUF_MAGIC_UNVERIFIED {
+    if magic == GGUF_MAGIC_UNVERIFIED {
+        return Err(LlmZipError::DequantError {
+            tensor_name: String::new(),
+            reason: format!(
+                "File '{}' is unverified ('UNVF'). It may be incomplete or corrupted.",
+                path.display()
+            ),
+        });
+    }
+    if magic != GGUF_MAGIC_VERIFIED {
         return Err(LlmZipError::MetadataParse(format!(
             "File '{}' does not have a valid GGUF header magic",
             path.display()
@@ -101,7 +110,7 @@ pub fn load_and_dequantize_gguf(
     let mut version_buf = [0u8; 4];
     file.read_exact(&mut version_buf)?;
     let version = u32::from_le_bytes(version_buf);
-    if version < 2 || version > 3 {
+    if !(2..=3).contains(&version) {
         return Err(LlmZipError::MetadataParse(format!("Unsupported GGUF version {}", version)));
     }
 

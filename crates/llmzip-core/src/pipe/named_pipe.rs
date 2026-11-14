@@ -7,8 +7,7 @@ use std::path::PathBuf;
 /// - Unix: `/tmp/<name>`
 pub fn parse_pipe_uri(uri: &str) -> String {
     let clean = uri.trim();
-    if clean.starts_with("pipe://") {
-        let name = &clean["pipe://".len()..];
+    if let Some(name) = clean.strip_prefix("pipe://") {
         #[cfg(windows)]
         {
             format!(r"\\.\pipe\{}", name)
