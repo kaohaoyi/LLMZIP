@@ -1,12 +1,12 @@
-# LLMZIP
+# LLMZIP（コミュニティオープンソース版 Community Edition）
 
 > **一時ファイル完全ゼロのストリーミング量子化＆モデルローダー。**  
 > コミュニティ共通の **「Double Space Dilemma（二重ディスク容量のジレンマ）」** を打破：ディスク使用ピークは厳密に **1.0x 最終出力サイズ + 4 KB `.wal`**。中間の 140 GB 巨大ファイル書き込みは一切発生しません。
 
 [![License: AGPL-3.0 / Commercial](https://img.shields.io/badge/License-AGPL%203.0%20%2F%20Commercial-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
-[![Version](https://img.shields.io/badge/version-0.4.0-green.svg)](Cargo.toml)
-[![Tests](https://img.shields.io/badge/tests-66%20passed-brightgreen.svg)](crates/llmzip-core/tests)
+[![Version](https://img.shields.io/badge/version-0.2.0--CE-green.svg)](Cargo.toml)
+[![Tests](https://img.shields.io/badge/tests-67%20passed-brightgreen.svg)](crates/llmzip-core/tests)
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md)
 

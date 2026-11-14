@@ -1,12 +1,12 @@
-# LLMZIP
+# LLMZIP (커뮤니티 오픈소스 버전 Community Edition)
 
 > **임시 파일 생성 없는 스트리밍 LLM 양자화 & 모델 로더.**  
 > 커뮤니티의 오랜 골칫거리 **"Double Space Dilemma(이중 디스크 용량 딜레마)"** 종결: 디스크 피크 점유율은 엄격하게 **1.0x 최종 양자화 파일 크기 + 4 KB `.wal`**. 140 GB에 달하는 중간 가중치 덤프가 발생하지 않습니다.
 
 [![License: AGPL-3.0 / Commercial](https://img.shields.io/badge/License-AGPL%203.0%20%2F%20Commercial-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
-[![Version](https://img.shields.io/badge/version-0.4.0-green.svg)](Cargo.toml)
-[![Tests](https://img.shields.io/badge/tests-66%20passed-brightgreen.svg)](crates/llmzip-core/tests)
+[![Version](https://img.shields.io/badge/version-0.2.0--CE-green.svg)](Cargo.toml)
+[![Tests](https://img.shields.io/badge/tests-67%20passed-brightgreen.svg)](crates/llmzip-core/tests)
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md)
 

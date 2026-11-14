@@ -1,12 +1,12 @@
-# LLMZIP
+# LLMZIP（社群開源版 Community Edition）
 
 > **零暫存檔串流量化器與模型加載引擎。**  
 > 終結社群的 **「雙重空間困境（Double Space Dilemma）」**：磁碟峰值佔用嚴格等於 **1.0x 最終量化檔大小 + 4 KB `.wal`**，不向本機硬碟寫入任何原始 140 GB 權重暫存。
 
 [![License: AGPL-3.0 / Commercial](https://img.shields.io/badge/License-AGPL%203.0%20%2F%20Commercial-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
-[![Version](https://img.shields.io/badge/version-0.4.0-green.svg)](Cargo.toml)
-[![Tests](https://img.shields.io/badge/tests-66%20passed-brightgreen.svg)](crates/llmzip-core/tests)
+[![Version](https://img.shields.io/badge/version-0.2.0--CE-green.svg)](Cargo.toml)
+[![Tests](https://img.shields.io/badge/tests-67%20passed-brightgreen.svg)](crates/llmzip-core/tests)
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md)
 

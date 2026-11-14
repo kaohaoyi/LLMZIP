@@ -41,7 +41,7 @@ fn format_bytes(bytes: u64) -> String {
 
 fn print_version() {
     println!(
-        "LLMZIP v{} — Zero-Temp-File Streaming LLM Quantizer (GGUF / AWQ / NVFP4)\n\
+        "LLMZIP Community Edition (CE) v{} — Zero-Temp-File Streaming LLM Quantizer (GGUF / AWQ / NVFP4)\n\
          Features: GGUF (Q4_K_M, Q8_0), AWQ (W4G128), NVFP4 (Blackwell), MXFP4 (OCP), FP8 (E4M3), Micro-WAL Crash Recovery",
         VERSION
     );
@@ -49,7 +49,7 @@ fn print_version() {
 
 fn print_usage() {
     println!(
-        "LLMZIP v{} — Zero-Temp-File Streaming LLM Quantizer\n\n\
+        "LLMZIP Community Edition (CE) v{} — Zero-Temp-File Streaming LLM Quantizer\n\n\
          Usage:\n  \
            llmzip <command> [arguments] [options]\n\n\
          Commands:\n  \

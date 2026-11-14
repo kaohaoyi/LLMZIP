@@ -32,7 +32,7 @@ class TestLlmZipPy(unittest.TestCase):
         except ImportError:
             self.skipTest("llmzip module not compiled into Python site-packages")
 
-        self.assertEqual(llmzip.version(), "0.4.0")
+        self.assertEqual(llmzip.version(), "0.2.0")
         self.assertTrue(hasattr(llmzip, "pull"))
         self.assertTrue(hasattr(llmzip, "swarm_seed"))
         self.assertTrue(hasattr(llmzip, "swarm_pull"))

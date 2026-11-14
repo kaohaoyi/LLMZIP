@@ -3,7 +3,7 @@ name = "llmzip-py"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Python bindings for LLMZIP Zero-Temp-File Streaming Quantizer"
+description = "Python bindings for LLMZIP Community Edition (CE)"
 
 [lib]
 name = "llmzip"
