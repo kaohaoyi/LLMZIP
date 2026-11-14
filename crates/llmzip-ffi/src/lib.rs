@@ -19,9 +19,9 @@ pub const LLMZIP_ERR_NULL_PTR: i32 = -1;
 pub const LLMZIP_ERR_EXECUTION: i32 = -2;
 pub const LLMZIP_ERR_INVALID_MAGIC: i32 = -3;
 
-static VERSION_C_STR: &[u8] = b"0.4.0\0";
+static VERSION_C_STR: &[u8] = concat!(env!("CARGO_PKG_VERSION"), "\0").as_bytes();
 
-/// Returns the static version string for LLMZIP (e.g. "0.1.0").
+/// Returns the static version string for LLMZIP (e.g. "0.2.0").
 #[no_mangle]
 pub extern "C" fn llmzip_version() -> *const c_char {
     VERSION_C_STR.as_ptr() as *const c_char
@@ -196,7 +196,7 @@ mod tests {
         let ver_ptr = llmzip_version();
         assert!(!ver_ptr.is_null());
         let ver = unsafe { CStr::from_ptr(ver_ptr).to_str().unwrap() };
-        assert_eq!(ver, "0.4.0");
+        assert_eq!(ver, env!("CARGO_PKG_VERSION"));
 
         unsafe {
             assert_eq!(llmzip_verify_file(std::ptr::null()), LLMZIP_ERR_NULL_PTR);

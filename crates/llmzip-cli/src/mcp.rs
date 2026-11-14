@@ -7,7 +7,7 @@ use std::path::Path;
 
 const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
 const SERVER_NAME: &str = "llmzip";
-const SERVER_VERSION: &str = "0.1.0";
+const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// 處理單行 JSON-RPC 2.0 請求並回傳序列化的 JSON-RPC 響應（若為通知則回傳 None）
 pub fn handle_json_rpc_line(line: &str) -> Option<String> {

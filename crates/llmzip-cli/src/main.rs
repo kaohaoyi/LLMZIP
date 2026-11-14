@@ -53,14 +53,15 @@ fn print_usage() {
          Usage:\n  \
            llmzip <command> [arguments] [options]\n\n\
          Commands:\n  \
-           inspect   <shard.safetensors>                      Inspect SafeTensors header & preview planned GGUF layout\n  \
-           quantize  <input.safetensors> <output.gguf>       Stream and quantize into pre-allocated output file\n  \
-           verify    <output.gguf>                            Verify cryptographic SHA-256 commit lock ('GGUF' vs 'UNVF')\n  \
-           wal-info  <output.gguf.wal>                        Inspect crash recovery journal (.wal) metrics\n  \
+           inspect    <shard.safetensors>                     Inspect SafeTensors header & preview planned GGUF layout\n  \
+           quantize   <input.safetensors> <output.gguf>       Stream and quantize into pre-allocated output file\n  \
+           dequantize <input.gguf> <output_dir>               Dequantize GGUF back to HuggingFace SafeTensors shards\n  \
+           verify     <output.gguf>                           Verify cryptographic SHA-256 commit lock ('GGUF' vs 'UNVF')\n  \
+           wal-info   <output.gguf.wal>                       Inspect crash recovery journal (.wal) metrics\n  \
            mcp                                                Start native Model Context Protocol (MCP) stdio server\n  \
-           pull      [--target <target>] <model>              One-shot pull & quantize into local inference\n  \
-           swarm     <seed|pull>                              P2P swarm decentralized weight distribution\n  \
-           cluster   pull --target <vllm|sglang> <model>      Zero-disk streaming direct-write into inference cluster\n\n\
+           pull       [--target <target>] <model>             One-shot pull & quantize into local inference\n  \
+           swarm      <seed|pull>                             P2P swarm decentralized weight distribution\n  \
+           cluster    pull --target <vllm|sglang> <model>     Zero-disk streaming direct-write into inference cluster\n\n\
          Quantization Presets (--preset <name>):\n  \
            q4_k_m    GGUF Q4_K_M (Default: medium 4-bit, best quality/size balance for llama.cpp)\n  \
            q8_0      GGUF Q8_0   (8-bit high precision, virtually lossless)\n  \
@@ -79,7 +80,8 @@ fn print_usage() {
            llmzip quantize model.safetensors model-q4km.gguf --preset q4_k_m\n  \
            llmzip quantize model.safetensors model-nvfp4.gguf --preset nvfp4 --sanitize\n  \
            llmzip verify model-q4km.gguf\n  \
-           llmzip wal-info model-q4km.gguf.wal",
+           llmzip dequantize model-q4km.gguf ./hf_model --dtype bf16\n  \
+           llmzip wal-info model-q4km.gguf.wal  # only present during interrupted runs",
         VERSION
     );
 }
@@ -1512,7 +1514,7 @@ fn main() {
         }
         unknown => {
             eprintln!(
-                "Error: Unknown command '{}'.\nAvailable commands: inspect, quantize, verify, wal-info, mcp, pull, serve, swarm, cluster.\nRun 'llmzip --help' for details.",
+                "Error: Unknown command '{}'.\nAvailable commands: inspect, quantize, dequantize, verify, wal-info, mcp, pull, serve, swarm, cluster.\nRun 'llmzip --help' for details.",
                 unknown
             );
             process::exit(1);
