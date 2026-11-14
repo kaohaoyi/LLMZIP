@@ -401,6 +401,7 @@ fn parse_s3_part_size(val: &str) -> Result<usize, String> {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn cmd_quantize_s3(
     input_path: &Path,
     s3_uri_str: &str,

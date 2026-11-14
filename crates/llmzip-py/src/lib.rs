@@ -1,3 +1,5 @@
+#![allow(clippy::useless_conversion)]
+
 use llmzip_core::cloud::{CloudCredentials, S3MultipartStreamer};
 use llmzip_core::dequant::{
     export_safetensors_shards, load_and_dequantize_gguf, DequantDtype,
@@ -181,9 +183,7 @@ fn quantize_stream(
     let total_expected_bytes = plan.total_output_file_size;
     let start_time = Instant::now();
 
-    let committed_count: usize;
-
-    if is_s3 {
+    let committed_count: usize = if is_s3 {
         let creds = CloudCredentials::from_env();
         let mut streamer = S3MultipartStreamer::new(out_destination, creds.as_ref(), Some(s3_part_bytes))
             .map_err(|e| PyValueError::new_err(format!("S3 error: {}", e)))?;
@@ -255,7 +255,7 @@ fn quantize_stream(
         streamer
             .complete()
             .map_err(|e| PyValueError::new_err(format!("S3 complete failed: {}", e)))?;
-        committed_count = count;
+        count
     } else {
         let out_p = Path::new(out_destination);
         let cfg = EngineConfig::default();
@@ -273,8 +273,8 @@ fn quantize_stream(
             engine.stream_shard_slice(0, meta, &raw, 1024 * 1024, None)
         }).map_err(|e| PyValueError::new_err(format!("Streaming error: {}", e)))?;
 
-        committed_count = committed;
-    }
+        committed
+    };
 
     let res = PyDict::new_bound(py);
     res.set_item("committed_tensors", committed_count)?;
@@ -339,7 +339,7 @@ fn pull(
 
         match target_owned.as_str() {
             "ollama" => {
-                let pure_name = repo_id.split('/').last().unwrap_or(&repo_id);
+                let pure_name = repo_id.split('/').next_back().unwrap_or(&repo_id);
                 let temp_gguf = std::env::temp_dir().join(format!("llmzip_py_pull_{}.gguf", std::process::id()));
                 let cfg = HfStreamerConfig {
                     repo_id: repo_id.clone(),
