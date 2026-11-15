@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1080, height=1920">
+  <title>LLMZIP TikTok Promo</title>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Noto+Sans+SC:wght@400;700;900&family=Noto+Sans+TC:wght@400;700;900&family=Noto+Sans+JP:wght@400;700;900&family=Outfit:wght@400;600;800;900&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      width: 1080px;
+      height: 1920px;
+      background: #07090e;
+      color: #ffffff;
+      font-family: 'Outfit', 'Noto Sans TC', 'Noto Sans SC', 'Noto Sans JP', sans-serif;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Background Grids & Ambience */
+    .bg-grid {
+      position: absolute;
+      inset: 0;
+      background-size: 60px 60px;
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+      z-index: 1;
+    }
+    .glow-circle {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(140px);
+      opacity: 0.35;
+      z-index: 2;
+      pointer-events: none;
+    }
+    .glow-red {
+      width: 800px;
+      height: 800px;
+      background: radial-gradient(circle, #ff2a5f 0%, transparent 70%);
+      top: 15%;
+      left: 10%;
+    }
+    .glow-cyan {
+      width: 850px;
+      height: 850px;
+      background: radial-gradient(circle, #00f2fe 0%, #4facfe 40%, transparent 70%);
+      bottom: 20%;
+      right: 5%;
+      opacity: 0;
+    }
+
+    /* Container */
+    #promo-canvas {
+      position: absolute;
+      width: 1080px;
+      height: 1920px;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 100px 70px 120px 70px;
+    }
+
+    /* Header Nav */
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+    }
+    .brand-tag {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .logo-badge {
+      background: linear-gradient(135deg, #00f2fe, #4facfe);
+      color: #07090e;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 900;
+      font-size: 32px;
+      padding: 10px 22px;
+      border-radius: 12px;
+      letter-spacing: 1px;
+      box-shadow: 0 0 35px rgba(0, 242, 254, 0.5);
+    }
+    .brand-sub {
+      font-size: 24px;
+      font-weight: 700;
+      color: #8b9bb4;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    .live-pill {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255, 42, 95, 0.15);
+      border: 1px solid rgba(255, 42, 95, 0.4);
+      color: #ff2a5f;
+      font-size: 20px;
+      font-weight: 800;
+      padding: 8px 20px;
+      border-radius: 999px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .live-dot {
+      width: 12px;
+      height: 12px;
+      background: #ff2a5f;
+      border-radius: 50%;
+      box-shadow: 0 0 10px #ff2a5f;
+    }
+
+    /* Scene Wrappers */
+    .scene {
+      position: absolute;
+      top: 240px;
+      left: 70px;
+      right: 70px;
+      bottom: 220px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    /* Scene 1: Pain Point */
+    .warning-icon {
+      font-size: 110px;
+      margin-bottom: 25px;
+      filter: drop-shadow(0 0 30px #ff2a5f);
+    }
+    .scene-title {
+      font-size: 64px;
+      font-weight: 900;
+      line-height: 1.25;
+      margin-bottom: 30px;
+      letter-spacing: -0.5px;
+    }
+    .text-red {
+      color: #ff3366;
+      text-shadow: 0 0 40px rgba(255, 51, 102, 0.6);
+    }
+    .text-cyan {
+      color: #00f2fe;
+      text-shadow: 0 0 40px rgba(0, 242, 254, 0.6);
+    }
+    .text-yellow {
+      color: #ffcc00;
+      text-shadow: 0 0 35px rgba(255, 204, 0, 0.5);
+    }
+
+    /* Comparison Box */
+    .dilemma-card {
+      width: 100%;
+      background: rgba(20, 25, 38, 0.7);
+      border: 2px solid rgba(255, 51, 102, 0.35);
+      border-radius: 28px;
+      padding: 40px 36px;
+      margin-top: 20px;
+      backdrop-filter: blur(20px);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+    }
+    .bar-row {
+      margin-bottom: 28px;
+      text-align: left;
+    }
+    .bar-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 26px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: #cbd5e1;
+    }
+    .bar-track {
+      width: 100%;
+      height: 28px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      overflow: hidden;
+      position: relative;
+    }
+    .bar-fill {
+      height: 100%;
+      border-radius: 14px;
+      width: 0%;
+    }
+    .bar-fill.red {
+      background: linear-gradient(90deg, #ff3366, #ff6b8b);
+      box-shadow: 0 0 25px rgba(255, 51, 102, 0.7);
+    }
+    .bar-fill.cyan {
+      background: linear-gradient(90deg, #00f2fe, #4facfe);
+      box-shadow: 0 0 25px rgba(0, 242, 254, 0.7);
+    }
+
+    .alert-banner {
+      margin-top: 35px;
+      background: rgba(255, 51, 102, 0.15);
+      border: 1px dashed #ff3366;
+      border-radius: 18px;
+      padding: 20px 24px;
+      font-size: 26px;
+      font-weight: 800;
+      color: #ff6b8b;
+      letter-spacing: 1px;
+    }
+
+    /* Scene 2: The Breakthrough */
+    .badge-hero {
+      background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
+      color: #050b14;
+      font-size: 30px;
+      font-weight: 900;
+      padding: 14px 34px;
+      border-radius: 999px;
+      margin-bottom: 30px;
+      letter-spacing: 2px;
+      box-shadow: 0 0 45px rgba(0, 242, 254, 0.6);
+      text-transform: uppercase;
+    }
+    .feature-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 24px;
+      width: 100%;
+      margin-top: 25px;
+    }
+    .feature-card {
+      background: rgba(15, 23, 42, 0.85);
+      border: 2px solid rgba(0, 242, 254, 0.25);
+      border-radius: 24px;
+      padding: 32px 30px;
+      display: flex;
+      align-items: center;
+      gap: 26px;
+      text-align: left;
+      box-shadow: 0 15px 40px rgba(0, 0, 0, 0.4);
+    }
+    .feature-card.highlight {
+      border-color: #00f2fe;
+      background: rgba(0, 242, 254, 0.08);
+      box-shadow: 0 0 45px rgba(0, 242, 254, 0.25);
+    }
+    .f-icon {
+      font-size: 60px;
+      min-width: 80px;
+      text-align: center;
+    }
+    .f-title {
+      font-size: 34px;
+      font-weight: 800;
+      color: #ffffff;
+      margin-bottom: 8px;
+    }
+    .f-desc {
+      font-size: 24px;
+      color: #94a3b8;
+      line-height: 1.4;
+    }
+
+    /* Scene 3: Tech Innovations */
+    .tech-pill-container {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      width: 100%;
+      margin-top: 20px;
+    }
+    .tech-pill {
+      background: rgba(18, 22, 34, 0.9);
+      border: 2px solid rgba(139, 92, 246, 0.35);
+      border-radius: 24px;
+      padding: 30px 32px;
+      text-align: left;
+      position: relative;
+      overflow: hidden;
+    }
+    .tech-pill.gold {
+      border-color: rgba(255, 204, 0, 0.4);
+    }
+    .tp-badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 22px;
+      font-weight: 800;
+      color: #c084fc;
+      margin-bottom: 10px;
+      display: block;
+    }
+    .gold .tp-badge {
+      color: #ffcc00;
+    }
+    .tp-title {
+      font-size: 34px;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+    .tp-detail {
+      font-size: 24px;
+      color: #94a3b8;
+    }
+
+    /* Scene 4: Call to Action */
+    .cta-github-logo {
+      width: 160px;
+      height: 160px;
+      fill: #ffffff;
+      margin-bottom: 25px;
+      filter: drop-shadow(0 0 40px rgba(255, 255, 255, 0.5));
+    }
+    .cta-title {
+      font-size: 72px;
+      font-weight: 900;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .cta-repo-box {
+      background: #0d1117;
+      border: 3px solid #30363d;
+      border-radius: 28px;
+      padding: 36px 40px;
+      width: 100%;
+      margin-top: 30px;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8);
+    }
+    .repo-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 38px;
+      font-weight: 800;
+      color: #58a6ff;
+      margin-bottom: 16px;
+    }
+    .repo-tags {
+      display: flex;
+      justify-content: center;
+      gap: 14px;
+      font-size: 20px;
+      color: #8b949e;
+      margin-bottom: 28px;
+    }
+    .cta-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      width: 100%;
+      background: linear-gradient(135deg, #238636 0%, #2ea043 100%);
+      color: #ffffff;
+      font-size: 36px;
+      font-weight: 800;
+      padding: 22px 0;
+      border-radius: 18px;
+      text-decoration: none;
+      box-shadow: 0 0 45px rgba(46, 160, 67, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    /* Bottom Footer Bar */
+    .bottom-bar {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      padding-top: 30px;
+      font-size: 22px;
+      color: #64748b;
+      font-weight: 600;
+    }
+    .tech-specs {
+      display: flex;
+      gap: 20px;
+    }
+    .spec-item {
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="glow-circle glow-red" id="glow-red"></div>
+  <div class="glow-circle glow-cyan" id="glow-cyan"></div>
+
+  <div id="promo-canvas">
+    <!-- Top Bar -->
+    <div class="top-bar">
+      <div class="brand-tag">
+        <div class="logo-badge">LLMZIP</div>
+        <div class="brand-sub">Zero-Temp Engine</div>
+      </div>
+      <div class="live-pill" id="status-pill">
+        <div class="live-dot"></div>
+        <span id="pill-text">HIGH DISK ALERT</span>
+      </div>
+    </div>
+
+    <!-- Scene 1: Pain (0s - 7.5s) -->
+    <div class="scene" id="scene-1">
+      <div class="warning-icon">⚠️</div>
+      <div class="scene-title" id="s1-title">
+        下載 70B 模型<br><span class="text-red">硬碟空間又爆炸了嗎？</span>
+      </div>
+      <div class="dilemma-card">
+        <div class="bar-row">
+          <div class="bar-header">
+            <span id="s1-bar1-label">傳統流程磁碟峰值 (Raw+Dump+GGUF)</span>
+            <span class="text-red" id="s1-bar1-val">320 GB</span>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill red" id="bar-trad"></div>
+          </div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-header">
+            <span id="s1-bar2-label">LLMZIP 串流極限量化</span>
+            <span class="text-cyan" id="s1-bar2-val">40 GB (1.0x)</span>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill cyan" id="bar-llmzip"></div>
+          </div>
+        </div>
+        <div class="alert-banner" id="s1-alert">
+          💥 256GB / 512GB 筆電直接中斷 (ENOSPC)
+        </div>
+      </div>
+    </div>
+
+    <!-- Scene 2: Solution (7.5s - 15.0s) -->
+    <div class="scene" id="scene-2">
+      <div class="badge-hero" id="s2-badge">ZERO TEMP FILES</div>
+      <div class="scene-title" id="s2-title">
+        邊下載 · 邊量化<br><span class="text-cyan">零暫存檔，直出 GGUF！</span>
+      </div>
+      <div class="feature-grid">
+        <div class="feature-card highlight">
+          <div class="f-icon">⚡</div>
+          <div>
+            <div class="f-title" id="s2-f1-title">0 暫存檔寫入</div>
+            <div class="f-desc" id="s2-f1-desc">140GB 原始張量絕不落地，告別硬碟污染</div>
+          </div>
+        </div>
+        <div class="feature-card">
+          <div class="f-icon">🧠</div>
+          <div>
+            <div class="f-title" id="s2-f2-title">單層環形記憶體緩衝</div>
+            <div class="f-desc" id="s2-f2-desc">記憶體嚴格限制在單層 Transformer，4GB RAM 即可執行</div>
+          </div>
+        </div>
+        <div class="feature-card">
+          <div class="f-icon">📉</div>
+          <div>
+            <div class="f-title" id="s2-f3-title">節省 61%+ 磁碟空間</div>
+            <div class="f-desc" id="s2-f3-desc">峰值佔用僅 1.0x 最終產物，端到端速度快 2.7 倍</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scene 3: Tech Innovations (15.0s - 22.5s) -->
+    <div class="scene" id="scene-3">
+      <div class="badge-hero" id="s3-badge">ENGINEERING INNOVATION</div>
+      <div class="scene-title" id="s3-title">
+        工業級穩定<br><span class="text-yellow">不怕斷網 · 絕無壞檔</span>
+      </div>
+      <div class="tech-pill-container">
+        <div class="tech-pill gold">
+          <span class="tp-badge">PATENT-GRADE RESUME</span>
+          <div class="tp-title" id="s3-f1-title">4KB Micro-WAL 斷線秒級續傳</div>
+          <div class="tp-detail" id="s3-f1-desc">記錄 SHA-256 中繼狀態，網路斷線 0 流量重載！</div>
+        </div>
+        <div class="tech-pill">
+          <span class="tp-badge">HARDWARE INTEGRITY</span>
+          <div class="tp-title" id="s3-f2-title">UNVF 密碼學原子防毒鎖</div>
+          <div class="tp-detail" id="s3-f2-desc">全 Shard 校驗通過前鎖定為 UNVF，壞檔絕不流入推理引擎！</div>
+        </div>
+        <div class="tech-pill">
+          <span class="tp-badge">CPU VECTORIZED</span>
+          <div class="tp-title" id="s3-f3-title">Rayon SIMD 多核加速</div>
+          <div class="tp-detail" id="s3-f3-desc">無需昂貴 GPU，一般筆電 CPU 跑滿頻寬極限量化！</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scene 4: CTA (22.5s - 30.0s) -->
+    <div class="scene" id="scene-4">
+      <svg class="cta-github-logo" viewBox="0 0 24 24">
+        <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+      </svg>
+      <div class="cta-title">LLMZIP</div>
+      <div class="scene-title" id="s4-sub" style="font-size: 42px; margin-bottom: 10px;">
+        開源免費 · 釋放硬碟空間
+      </div>
+      <div class="cta-repo-box">
+        <div class="repo-name">github.com/kaohaoyi/LLMZIP</div>
+        <div class="repo-tags">
+          <span>Rust 1.80+</span> · <span>AGPL-3.0</span> · <span>Zero Temp Files</span>
+        </div>
+        <a class="cta-btn" id="s4-btn" href="#">
+          <span>⭐</span> <span id="s4-btn-text">STAR ON GITHUB</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Bottom Bar -->
+    <div class="bottom-bar">
+      <div class="tech-specs">
+        <span class="spec-item">v0.2.0-CE</span>
+        <span class="spec-item">Q4_K_M / Q8_0 / NVFP4</span>
+      </div>
+      <div id="author-tag">by kaohaoyi · Open Source</div>
+    </div>
+  </div>
+
+  <script>
+    // Multilingual Translations
+    const i18n = {
+      "zh-tw": {
+        pill: "磁碟空間警報",
+        s1Title: "下載 70B 模型<br><span class='text-red'>硬碟空間又爆炸了嗎？</span>",
+        s1Bar1: "傳統流程磁碟峰值 (Raw+Dump+GGUF)",
+        s1Bar2: "LLMZIP 串流極限量化",
+        s1Alert: "💥 256GB / 512GB 筆電直接中斷 (ENOSPC)",
+        s2Badge: "ZERO TEMP FILES",
+        s2Title: "邊下載 · 邊量化<br><span class='text-cyan'>零暫存檔，直出 GGUF！</span>",
+        s2F1Title: "0 暫存檔寫入",
+        s2F1Desc: "140GB 原始張量絕不落地，告別硬碟污染",
+        s2F2Title: "單層環形記憶體緩衝",
+        s2F2Desc: "記憶體嚴格限制在單層 Transformer，4GB RAM 即可執行",
+        s2F3Title: "節省 61%+ 磁碟空間",
+        s2F3Desc: "峰值佔用僅 1.0x 最終產物，端到端速度快 2.7 倍",
+        s3Badge: "ENGINEERING INNOVATION",
+        s3Title: "工業級穩定<br><span class='text-yellow'>不怕斷網 · 絕無壞檔</span>",
+        s3F1Title: "4KB Micro-WAL 斷線秒級續傳",
+        s3F1Desc: "記錄 SHA-256 中繼狀態，網路斷線 0 流量重載！",
+        s3F2Title: "UNVF 密碼學原子防毒鎖",
+        s3F2Desc: "全 Shard 校驗通過前鎖定為 UNVF，壞檔絕不流入推理引擎！",
+        s3F3Title: "Rayon SIMD 多核加速",
+        s3F3Desc: "無需昂貴 GPU，一般筆電 CPU 跑滿頻寬極限量化！",
+        s4Sub: "開源免費 · 釋放硬碟空間",
+        s4Btn: "GITHUB 給個 STAR 搶先體驗"
+      },
+      "zh-cn": {
+        pill: "磁盘空间警报",
+        s1Title: "下载 70B 模型<br><span class='text-red'>硬盘空间又爆炸了吗？</span>",
+        s1Bar1: "传统流程磁盘峰值 (Raw+Dump+GGUF)",
+        s1Bar2: "LLMZIP 流式极限量化",
+        s1Alert: "💥 256GB / 512GB 笔记本直接中断 (ENOSPC)",
+        s2Badge: "ZERO TEMP FILES",
+        s2Title: "边下载 · 边量化<br><span class='text-cyan'>零临时文件，直出 GGUF！</span>",
+        s2F1Title: "0 临时文件写入",
+        s2F1Desc: "140GB 原始张量绝不落地，告别硬盘污染",
+        s2F2Title: "单层环形内存缓冲",
+        s2F2Desc: "内存严格限制在单层 Transformer，4GB RAM 即可运行",
+        s2F3Title: "节省 61%+ 磁盘空间",
+        s2F3Desc: "峰值占用仅 1.0x 最终产物，端到端速度快 2.7 倍",
+        s3Badge: "ENGINEERING INNOVATION",
+        s3Title: "工业级稳定<br><span class='text-yellow'>不怕断网 · 绝无坏档</span>",
+        s3F1Title: "4KB Micro-WAL 断线秒级续传",
+        s3F1Desc: "记录 SHA-256 中继状态，网络断线 0 流量重载！",
+        s3F2Title: "UNVF 密码学原子防毒锁",
+        s3F2Desc: "全 Shard 校验通过前锁定为 UNVF，坏档绝不流入推理引擎！",
+        s3F3Title: "Rayon SIMD 多核加速",
+        s3F3Desc: "无需昂贵 GPU，普通笔记本 CPU 跑满带宽极限量化！",
+        s4Sub: "开源免费 · 释放硬盘空间",
+        s4Btn: "GITHUB 点个 STAR 抢先体验"
+      },
+      "en": {
+        pill: "DISK ENOSPC ALERT",
+        s1Title: "Downloading 70B LLMs?<br><span class='text-red'>Disk Running Out of Space?</span>",
+        s1Bar1: "Traditional Peak (Raw+Dump+GGUF)",
+        s1Bar2: "LLMZIP Stream & Quantize",
+        s1Alert: "💥 256GB MacBooks Abort Instantly (ENOSPC)",
+        s2Badge: "ZERO TEMP FILES",
+        s2Title: "Stream & Quantize<br><span class='text-cyan'>Zero Temp Files, Direct to GGUF!</span>",
+        s2F1Title: "0 Temp Disk Writes",
+        s2F1Desc: "140GB raw tensors never touch disk storage",
+        s2F2Title: "Layer Ring Buffer",
+        s2F2Desc: "RAM strictly bounded to 1 layer; runs on 4GB RAM",
+        s2F3Title: "-61% Disk Space Saved",
+        s2F3Desc: "Peak footprint equals 1.0x final output size",
+        s3Badge: "ENGINEERING INNOVATION",
+        s3Title: "Bulletproof Reliability<br><span class='text-yellow'>Zero Waste · Zero Poison</span>",
+        s3F1Title: "4KB Micro-WAL Instant Resume",
+        s3F1Desc: "Journals SHA-256 state; zero bytes redownloaded on drop!",
+        s3F2Title: "UNVF Cryptographic Commit Lock",
+        s3F2Desc: "Atomic flip UNVF to GGUF ensures zero corrupt files",
+        s3F3Title: "Rayon SIMD Vectorization",
+        s3F3Desc: "CPU saturates line bandwidth. No GPU required!",
+        s4Sub: "Open Source · Break the Space Dilemma",
+        s4Btn: "STAR ON GITHUB NOW"
+      },
+      "ja": {
+        pill: "容量枯渇アラート",
+        s1Title: "70BモデルのDL<br><span class='text-red'>SSD容量が足りてますか？</span>",
+        s1Bar1: "従来の必要ピーク容量 (Raw+Dump+GGUF)",
+        s1Bar2: "LLMZIP ストリーミング極限圧縮",
+        s1Alert: "💥 256GB ノートPCは容量不足で強制停止！",
+        s2Badge: "ZERO TEMP FILES",
+        s2Title: "受信しながら直接量子化<br><span class='text-cyan'>一時ファイル完全ゼロ！</span>",
+        s2F1Title: "テンポラリ出力ゼロ",
+        s2F1Desc: "140GBの生データをディスクに一切書き込みません",
+        s2F2Title: "レイヤー単位リングバッファ",
+        s2F2Desc: "メモリは1層分のみ使用。4GB RAMでも軽快動作",
+        s2F3Title: "ディスク容量 61% 削減",
+        s2F3Desc: "ピーク時も最終ファイルサイズと同じ1.0倍のみ",
+        s3Badge: "ENGINEERING INNOVATION",
+        s3Title: "産業グレードの堅牢性<br><span class='text-yellow'>回線切断も安心 · 破損ゼロ</span>",
+        s3F1Title: "4KB Micro-WAL 即時レジューム",
+        s3F1Desc: "SHA-256状態を記録し、再開時の通信ロス完全ゼロ！",
+        s3F2Title: "UNVF 暗号検証コミットロック",
+        s3F2Desc: "ハッシュ検証完了までロック。破損ファイルの流入を完全防止",
+        s3F3Title: "Rayon SIMD CPU高速化",
+        s3F3Desc: "高価なGPU不要！一般CPUでネットワーク速度をフル活用！",
+        s4Sub: "完全オープンソース · 今すぐ容量解放",
+        s4Btn: "GITHUBでSTARを押す"
+      }
+    };
+
+    // Apply Language
+    const params = new URLSearchParams(window.location.search);
+    const lang = (params.get("lang") || "zh-tw").toLowerCase();
+    const t = i18n[lang] || i18n["zh-tw"];
+
+    document.getElementById("pill-text").innerText = t.pill;
+    document.getElementById("s1-title").innerHTML = t.s1Title;
+    document.getElementById("s1-bar1-label").innerText = t.s1Bar1;
+    document.getElementById("s1-bar2-label").innerText = t.s1Bar2;
+    document.getElementById("s1-alert").innerText = t.s1Alert;
+    document.getElementById("s2-badge").innerText = t.s2Badge;
+    document.getElementById("s2-title").innerHTML = t.s2Title;
+    document.getElementById("s2-f1-title").innerText = t.s2F1Title;
+    document.getElementById("s2-f1-desc").innerText = t.s2F1Desc;
+    document.getElementById("s2-f2-title").innerText = t.s2F2Title;
+    document.getElementById("s2-f2-desc").innerText = t.s2F2Desc;
+    document.getElementById("s2-f3-title").innerText = t.s2F3Title;
+    document.getElementById("s2-f3-desc").innerText = t.s2F3Desc;
+    document.getElementById("s3-badge").innerText = t.s3Badge;
+    document.getElementById("s3-title").innerHTML = t.s3Title;
+    document.getElementById("s3-f1-title").innerText = t.s3F1Title;
+    document.getElementById("s3-f1-desc").innerText = t.s3F1Desc;
+    document.getElementById("s3-f2-title").innerText = t.s3F2Title;
+    document.getElementById("s3-f2-desc").innerText = t.s3F2Desc;
+    document.getElementById("s3-f3-title").innerText = t.s3F3Title;
+    document.getElementById("s3-f3-desc").innerText = t.s3F3Desc;
+    document.getElementById("s4-sub").innerText = t.s4Sub;
+    document.getElementById("s4-btn-text").innerText = t.s4Btn;
+
+    // Build Master 30-Second GSAP Timeline
+    const tl = gsap.timeline({ paused: false });
+
+    // Scene 1 (0.0s - 7.5s)
+    tl.to("#scene-1", { opacity: 1, duration: 0.6, ease: "power2.out" }, 0.2)
+      .to("#bar-trad", { width: "100%", duration: 1.8, ease: "power3.out" }, 1.0)
+      .to("#bar-llmzip", { width: "12.5%", duration: 1.2, ease: "power3.out" }, 2.2)
+      .fromTo("#s1-alert", { scale: 0.85, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.5, ease: "back.out(1.7)" }, 3.5)
+      .to("#scene-1", { opacity: 0, scale: 0.95, duration: 0.5, ease: "power2.in" }, 7.0);
+
+    // Scene 2 (7.5s - 15.0s)
+    tl.to("#glow-red", { opacity: 0, duration: 0.6 }, 7.2)
+      .to("#glow-cyan", { opacity: 0.45, duration: 0.6 }, 7.2)
+      .to("#status-pill", { borderColor: "#00f2fe", color: "#00f2fe", background: "rgba(0, 242, 254, 0.15)", duration: 0.4 }, 7.5)
+      .set("#pill-text", { innerText: "ZERO-TEMP STREAMING" }, 7.5)
+      .to("#scene-2", { opacity: 1, duration: 0.6, ease: "power2.out" }, 7.6)
+      .fromTo(".feature-card", { y: 40, opacity: 0 }, { y: 0, opacity: 1, stagger: 0.35, duration: 0.7, ease: "power2.out" }, 8.2)
+      .to("#scene-2", { opacity: 0, scale: 0.95, duration: 0.5, ease: "power2.in" }, 14.5);
+
+    // Scene 3 (15.0s - 22.5s)
+    tl.set("#pill-text", { innerText: "MICRO-WAL PROTOCOL" }, 15.0)
+      .to("#scene-3", { opacity: 1, duration: 0.6, ease: "power2.out" }, 15.1)
+      .fromTo(".tech-pill", { x: -50, opacity: 0 }, { x: 0, opacity: 1, stagger: 0.4, duration: 0.7, ease: "power2.out" }, 15.6)
+      .to("#scene-3", { opacity: 0, scale: 0.95, duration: 0.5, ease: "power2.in" }, 22.0);
+
+    // Scene 4 (22.5s - 30.0s)
+    tl.set("#pill-text", { innerText: "OPEN SOURCE NOW" }, 22.5)
+      .to("#scene-4", { opacity: 1, duration: 0.6, ease: "power2.out" }, 22.6)
+      .fromTo(".cta-github-logo", { scale: 0.6, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.8, ease: "back.out(2)" }, 23.0)
+      .fromTo(".cta-repo-box", { y: 50, opacity: 0 }, { y: 0, opacity: 1, duration: 0.8, ease: "power3.out" }, 23.6)
+      .fromTo("#s4-btn", { scale: 0.9 }, { scale: 1.05, repeat: -1, yoyo: true, duration: 0.8, ease: "power1.inOut" }, 24.5);
+
+    window.__timeline = tl;
+  </script>
+</body>
+</html>
