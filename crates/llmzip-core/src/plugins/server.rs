@@ -32,12 +32,13 @@ impl Default for OllamaProxyConfig {
 
 /// Runs the lightweight Ollama Proxy server, handling `/api/pull`, `/api/tags`, and `/api/version`.
 pub async fn run_ollama_proxy(config: OllamaProxyConfig) -> Result<()> {
-    let listener = TcpListener::bind(config.bind_addr).await.map_err(|e| {
-        LlmZipError::PluginError {
-            target: "ollama-proxy".to_string(),
-            reason: format!("Failed to bind to {}: {}", config.bind_addr, e),
-        }
-    })?;
+    let listener =
+        TcpListener::bind(config.bind_addr)
+            .await
+            .map_err(|e| LlmZipError::PluginError {
+                target: "ollama-proxy".to_string(),
+                reason: format!("Failed to bind to {}: {}", config.bind_addr, e),
+            })?;
 
     let plugin = Arc::new(match config.ollama_root.clone() {
         Some(root) => OllamaPlugin::with_root(root),
@@ -117,7 +118,8 @@ pub async fn run_ollama_proxy(config: OllamaProxyConfig) -> Result<()> {
                 send_ndjson_chunk(&mut socket, r#"{"status":"pulling manifest"}"#).await;
 
                 // Download via HfParallelStreamer
-                let temp_gguf = std::env::temp_dir().join(format!("ollama_pull_{}.gguf", std::process::id()));
+                let temp_gguf =
+                    std::env::temp_dir().join(format!("ollama_pull_{}.gguf", std::process::id()));
                 let streamer_cfg = HfStreamerConfig {
                     repo_id: model_name.to_string(),
                     revision: None,
@@ -130,12 +132,20 @@ pub async fn run_ollama_proxy(config: OllamaProxyConfig) -> Result<()> {
                     expected_sha256: None,
                 };
 
-                send_ndjson_chunk(&mut socket, r#"{"status":"streaming and quantizing model weights"}"#).await;
+                send_ndjson_chunk(
+                    &mut socket,
+                    r#"{"status":"streaming and quantizing model weights"}"#,
+                )
+                .await;
 
                 let streamer = HfParallelStreamer::new(streamer_cfg);
                 match streamer.stream_to_gguf().await {
                     Ok(path) => {
-                        send_ndjson_chunk(&mut socket, r#"{"status":"injecting into ollama blobs and manifests"}"#).await;
+                        send_ndjson_chunk(
+                            &mut socket,
+                            r#"{"status":"injecting into ollama blobs and manifests"}"#,
+                        )
+                        .await;
                         let tag = "latest";
                         let pure_name = model_name.split('/').next_back().unwrap_or(model_name);
                         let _ = plugin.inject_model(pure_name, tag, &path);
@@ -151,7 +161,8 @@ pub async fn run_ollama_proxy(config: OllamaProxyConfig) -> Result<()> {
                 // Final empty chunk for HTTP Transfer-Encoding: chunked
                 let _ = socket.write_all(b"0\r\n\r\n").await;
             } else {
-                let resp = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                let resp =
+                    "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
                 let _ = socket.write_all(resp.as_bytes()).await;
             }
         });

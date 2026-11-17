@@ -10,6 +10,9 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md)
 
+> [!IMPORTANT]
+> **Notice for v0.1.0 Users**: Models previously quantized with preset `q4_k_m` under v0.1.0 (affected by the legacy Q6_K bitplane layout) may exhibit abnormal token generation in llama.cpp. Please re-quantize your models using v0.2.0.
+
 ---
 
 ## The Problem: The "Double Space Dilemma"

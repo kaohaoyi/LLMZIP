@@ -28,7 +28,9 @@ fn test_deepseek_mla_classification_and_sglang_config() {
 
     // Generate SGLang config
     let plugin = DeepSeekPlugin::new(temp_dir.clone());
-    let sglang_cfg = plugin.generate_sglang_config("deepseek-ai/DeepSeek-V3", 128, 512).unwrap();
+    let sglang_cfg = plugin
+        .generate_sglang_config("deepseek-ai/DeepSeek-V3", 128, 512)
+        .unwrap();
     assert!(sglang_cfg.exists());
 
     let content = fs::read_to_string(&sglang_cfg).unwrap();

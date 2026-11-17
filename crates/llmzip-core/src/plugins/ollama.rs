@@ -63,12 +63,7 @@ impl OllamaPlugin {
         self.root_dir.join("blobs")
     }
 
-    pub fn manifests_dir(
-        &self,
-        registry: &str,
-        namespace: &str,
-        model: &str,
-    ) -> PathBuf {
+    pub fn manifests_dir(&self, registry: &str, namespace: &str, model: &str) -> PathBuf {
         self.root_dir
             .join("manifests")
             .join(registry)
@@ -102,8 +97,8 @@ impl OllamaPlugin {
             "model_family": "llama",
             "model_type": "quantized"
         });
-        let config_bytes = serde_json::to_vec(&config_json)
-            .map_err(|e| LlmZipError::PluginError {
+        let config_bytes =
+            serde_json::to_vec(&config_json).map_err(|e| LlmZipError::PluginError {
                 target: "ollama".to_string(),
                 reason: format!("Failed serializing config JSON: {}", e),
             })?;
@@ -133,12 +128,11 @@ impl OllamaPlugin {
         fs::create_dir_all(&manifest_dir).map_err(LlmZipError::Io)?;
 
         let manifest_path = manifest_dir.join(tag);
-        let manifest_json = serde_json::to_string_pretty(&manifest).map_err(|e| {
-            LlmZipError::PluginError {
+        let manifest_json =
+            serde_json::to_string_pretty(&manifest).map_err(|e| LlmZipError::PluginError {
                 target: "ollama".to_string(),
                 reason: format!("Failed serializing manifest: {}", e),
-            }
-        })?;
+            })?;
         fs::write(&manifest_path, manifest_json).map_err(LlmZipError::Io)?;
 
         Ok((blob_path, manifest_path))

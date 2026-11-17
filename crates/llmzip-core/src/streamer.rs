@@ -4,7 +4,9 @@ use crate::io_prealloc::PreallocatedOutputFile;
 use crate::layout::{DeterministicLayoutPlan, QuantFormat, QuantPreset};
 use crate::preflight::{TensorRole, VirtualTensorSpace};
 use crate::quant::awq_calib::AwqSlidingCalibrator;
-use crate::quant::gguf_simd::{decode_and_validate_upstream_to_f32, dequantize_to_f32, quantize_f32_slice};
+use crate::quant::gguf_simd::{
+    decode_and_validate_upstream_to_f32, dequantize_to_f32, quantize_f32_slice,
+};
 use crate::ringbuf::LayerRingBuffer;
 use crate::wal::MicroWal;
 use std::fs::{self, OpenOptions};
@@ -182,7 +184,11 @@ impl StreamingQuantizeEngine {
 
         let ring_buf = LayerRingBuffer::new(config.ring_buffer_budget_bytes);
 
-        let initial_cursor = if resume { wal.shard_confirmed_offset } else { 0 };
+        let initial_cursor = if resume {
+            wal.shard_confirmed_offset
+        } else {
+            0
+        };
 
         let mut engine = Self {
             vtas,
@@ -216,7 +222,8 @@ impl StreamingQuantizeEngine {
             }
             let target = &self.plan.write_targets[tensor.tensor_id];
             let mut q_bytes = vec![0u8; target.quantized_byte_len as usize];
-            self.output_file.pread_exact(target.file_write_offset, &mut q_bytes)?;
+            self.output_file
+                .pread_exact(target.file_write_offset, &mut q_bytes)?;
             let deq_f32 = dequantize_to_f32(&q_bytes, target.assigned_quant);
 
             if tensor.role == TensorRole::Embedding && tensor.shape.len() == 2 {
@@ -231,7 +238,11 @@ impl StreamingQuantizeEngine {
                 ));
             } else if tensor.shape.len() == 2 {
                 if let Some(ref mut calib) = self.awq_calibrator {
-                    calib.propagate_through_dequantized_block(&deq_f32, tensor.shape[0], tensor.shape[1]);
+                    calib.propagate_through_dequantized_block(
+                        &deq_f32,
+                        tensor.shape[0],
+                        tensor.shape[1],
+                    );
                 }
             }
         }
@@ -265,7 +276,8 @@ impl StreamingQuantizeEngine {
             0
         };
 
-        let discard_bytes = verify_http_range_response(&shard.shard_name, expected_offset, http_meta)?;
+        let discard_bytes =
+            verify_http_range_response(&shard.shard_name, expected_offset, http_meta)?;
         if (discard_bytes as usize) > shard_bytes_from_response.len() {
             return Err(LlmZipError::HttpRangeViolation {
                 shard_name: shard.shard_name.clone(),
@@ -337,7 +349,8 @@ impl StreamingQuantizeEngine {
 
                 let expected_tensor_bytes = (t_end - t_start) as usize;
                 if let Some(full_raw_bytes) =
-                    self.ring_buf.push_tensor_chunk(tid, expected_tensor_bytes, tensor_slice)?
+                    self.ring_buf
+                        .push_tensor_chunk(tid, expected_tensor_bytes, tensor_slice)?
                 {
                     // Full tensor assembled in RAM Ring Buffer -> Validate, Quantize & In-Place Write!
                     self.quantize_and_commit_tensor(tid, &full_raw_bytes)?;
@@ -437,24 +450,36 @@ impl StreamingQuantizeEngine {
         }
 
         // 3. Quantize according to assigned QuantFormat (using AWQ Sliding-Window Calibration if applicable).
-        let quantized_bytes = if target.assigned_quant == QuantFormat::AwqInt4G128 && t_meta.shape.len() == 2 {
-            let out_dim = t_meta.shape[0];
-            let in_dim = t_meta.shape[1];
-            if let Some(ref mut calib) = self.awq_calibrator {
-                if calib.hidden_dim == in_dim {
-                    let (q_bytes, _scales) = calib.calibrate_and_quantize_linear(&f32_weights, out_dim, in_dim);
-                    let deq = dequantize_to_f32(&q_bytes, QuantFormat::AwqInt4G128);
-                    calib.propagate_through_dequantized_block(&deq, out_dim, in_dim);
-                    q_bytes
+        let quantized_bytes =
+            if target.assigned_quant == QuantFormat::AwqInt4G128 && t_meta.shape.len() == 2 {
+                let out_dim = t_meta.shape[0];
+                let in_dim = t_meta.shape[1];
+                if let Some(ref mut calib) = self.awq_calibrator {
+                    if calib.hidden_dim == in_dim {
+                        let (q_bytes, best_scales) =
+                            calib.calibrate_and_quantize_linear(&f32_weights, out_dim, in_dim);
+                        let mut deq = dequantize_to_f32(&q_bytes, QuantFormat::AwqInt4G128);
+                        if best_scales.len() == in_dim {
+                            for r in 0..out_dim {
+                                for c in 0..in_dim {
+                                    let sc = best_scales[c];
+                                    if sc > 0.0 {
+                                        deq[r * in_dim + c] /= sc;
+                                    }
+                                }
+                            }
+                        }
+                        calib.propagate_through_dequantized_block(&deq, out_dim, in_dim);
+                        q_bytes
+                    } else {
+                        quantize_f32_slice(&f32_weights, target.assigned_quant)
+                    }
                 } else {
                     quantize_f32_slice(&f32_weights, target.assigned_quant)
                 }
             } else {
                 quantize_f32_slice(&f32_weights, target.assigned_quant)
-            }
-        } else {
-            quantize_f32_slice(&f32_weights, target.assigned_quant)
-        };
+            };
 
         // 4. Write directly to the pre-allocated target offset (including MoE 3D sub-offsets).
         self.output_file
@@ -462,7 +487,8 @@ impl StreamingQuantizeEngine {
 
         // 5. If `tie_word_embeddings` is active, write the tied `output.weight` slot simultaneously [E07].
         if let Some(secondary_offset) = target.tied_secondary_offset {
-            self.output_file.pwrite_all(secondary_offset, &quantized_bytes)?;
+            self.output_file
+                .pwrite_all(secondary_offset, &quantized_bytes)?;
         }
 
         Ok(())

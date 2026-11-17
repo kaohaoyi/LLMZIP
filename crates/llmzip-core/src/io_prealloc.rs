@@ -4,6 +4,39 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
+#[cfg(windows)]
+fn is_pid_alive(pid: u32) -> bool {
+    unsafe {
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn OpenProcess(
+                dwDesiredAccess: u32,
+                bInheritHandle: i32,
+                dwProcessId: u32,
+            ) -> *mut std::ffi::c_void;
+            fn CloseHandle(hObject: *mut std::ffi::c_void) -> i32;
+        }
+        const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if !handle.is_null() {
+            CloseHandle(handle);
+            true
+        } else {
+            false
+        }
+    }
+}
+
+#[cfg(unix)]
+fn is_pid_alive(pid: u32) -> bool {
+    unsafe { libc::kill(pid as i32, 0) == 0 }
+}
+
+#[cfg(not(any(windows, unix)))]
+fn is_pid_alive(_pid: u32) -> bool {
+    true
+}
+
 /// Manages the pre-allocated output file, exclusive concurrency lock [E10],
 /// random-offset `pwrite` operations, and the cryptographic Magic Commit Lock (`UNVF` -> `GGUF`) [E03].
 pub struct PreallocatedOutputFile {
@@ -17,24 +50,51 @@ pub struct PreallocatedOutputFile {
 impl PreallocatedOutputFile {
     /// Creates or opens a pre-allocated output file, acquiring an exclusive process lock [E10]
     /// and pre-allocating the exact final byte size on disk [E08].
-    pub fn create_or_resume(output_path: &Path, plan: &DeterministicLayoutPlan, resume: bool) -> Result<Self> {
+    pub fn create_or_resume(
+        output_path: &Path,
+        plan: &DeterministicLayoutPlan,
+        resume: bool,
+    ) -> Result<Self> {
         let mut lock_os = output_path.as_os_str().to_os_string();
         lock_os.push(".lock");
         let lock_path = PathBuf::from(lock_os);
 
-        // Acquire atomic exclusive lock file [E10].
-        match OpenOptions::new().write(true).create_new(true).open(&lock_path) {
-            Ok(mut lock_file) => {
-                let pid = std::process::id();
-                let _ = writeln!(lock_file, "pid={}", pid);
-                let _ = lock_file.sync_all();
+        // Acquire atomic exclusive lock file [E10] with zombie recovery.
+        let mut attempts = 0;
+        loop {
+            match OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&lock_path)
+            {
+                Ok(mut lock_file) => {
+                    let pid = std::process::id();
+                    let _ = writeln!(lock_file, "pid={}", pid);
+                    let _ = lock_file.sync_all();
+                    break;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    attempts += 1;
+                    if attempts == 1 {
+                        if let Ok(content) = fs::read_to_string(&lock_path) {
+                            if let Some(line) = content.lines().find(|l| l.starts_with("pid=")) {
+                                if let Ok(dead_pid) =
+                                    line.trim_start_matches("pid=").trim().parse::<u32>()
+                                {
+                                    if !is_pid_alive(dead_pid) {
+                                        let _ = fs::remove_file(&lock_path);
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    return Err(LlmZipError::FileLocked {
+                        path: output_path.display().to_string(),
+                    });
+                }
+                Err(e) => return Err(LlmZipError::Io(e)),
             }
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                return Err(LlmZipError::FileLocked {
-                    path: output_path.display().to_string(),
-                });
-            }
-            Err(e) => return Err(LlmZipError::Io(e)),
         }
 
         let file_res = (|| -> Result<File> {
@@ -60,13 +120,29 @@ impl PreallocatedOutputFile {
                 }
                 file.sync_all()?;
             } else {
-                // Verify the existing file starts with "UNVF" or "GGUF"
-                let mut magic = [0u8; 4];
+                // Verify the existing file starts with "UNVF" or "GGUF" and matches layout plan
+                let metadata = file.metadata()?;
+                if metadata.len() != plan.total_output_file_size {
+                    return Err(LlmZipError::MetadataParse(format!(
+                        "Resume file size mismatch: existing {} bytes != plan {} bytes",
+                        metadata.len(),
+                        plan.total_output_file_size
+                    )));
+                }
+
+                let mut header_sample = vec![0u8; plan.unverified_header_bytes.len()];
                 file.seek(SeekFrom::Start(0))?;
-                file.read_exact(&mut magic)?;
+                file.read_exact(&mut header_sample)?;
+                let magic = &header_sample[0..4];
                 if magic != GGUF_MAGIC_UNVERIFIED && magic != GGUF_MAGIC_VERIFIED {
                     return Err(LlmZipError::MetadataParse(
                         "Resume target file does not have a valid UNVF/GGUF header".to_string(),
+                    ));
+                }
+                if header_sample[4..] != plan.unverified_header_bytes[4..] {
+                    return Err(LlmZipError::MetadataParse(
+                        "Resume target file metadata does not match current quantization plan"
+                            .to_string(),
                     ));
                 }
             }

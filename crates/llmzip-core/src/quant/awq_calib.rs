@@ -153,7 +153,12 @@ impl AwqSlidingCalibrator {
 
     /// Propagates the Ping-Pong hidden state through a quantized layer (`X_{l+1} = LayerNorm(X_l + W_proj * X_l)`),
     /// used both during normal streaming progression and during Crash-Resume Fast Re-Forward (Question 5).
-    pub fn propagate_through_dequantized_block(&mut self, weight_matrix: &[f32], out_dim: usize, in_dim: usize) {
+    pub fn propagate_through_dequantized_block(
+        &mut self,
+        weight_matrix: &[f32],
+        out_dim: usize,
+        in_dim: usize,
+    ) {
         if in_dim != self.hidden_dim || out_dim != self.hidden_dim {
             return;
         }

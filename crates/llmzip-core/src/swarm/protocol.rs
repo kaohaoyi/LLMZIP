@@ -1,9 +1,9 @@
+use crate::swarm::merkle::ModelManifest;
 use bytes::{BufMut, BytesMut};
 use serde::{Deserialize, Serialize};
 use std::io;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use crate::swarm::merkle::ModelManifest;
 
 pub const SWARM_MAGIC: &[u8; 4] = b"LZSW";
 
@@ -13,16 +13,26 @@ pub enum SwarmMessage {
     Ping,
     Pong,
     AnnounceManifest(ModelManifest),
-    RequestChunk { model_id: String, chunk_id: u32 },
-    ChunkData { model_id: String, chunk_id: u32, data: Vec<u8> },
-    HavePiece { model_id: String, chunk_id: u32 },
+    RequestChunk {
+        model_id: String,
+        chunk_id: u32,
+    },
+    ChunkData {
+        model_id: String,
+        chunk_id: u32,
+        data: Vec<u8>,
+    },
+    HavePiece {
+        model_id: String,
+        chunk_id: u32,
+    },
     Error(String),
 }
 
 /// Tokio TCP length-prefixed framing helper: [MAGIC: 4B][LEN: 4B BE][PAYLOAD]
 pub async fn write_frame(stream: &mut TcpStream, msg: &SwarmMessage) -> io::Result<()> {
-    let payload = serde_json::to_vec(msg)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    let payload =
+        serde_json::to_vec(msg).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     let mut buf = BytesMut::with_capacity(8 + payload.len());
     buf.put_slice(SWARM_MAGIC);
     buf.put_u32(payload.len() as u32);
@@ -35,7 +45,7 @@ pub async fn write_frame(stream: &mut TcpStream, msg: &SwarmMessage) -> io::Resu
 pub async fn read_frame(stream: &mut TcpStream) -> io::Result<SwarmMessage> {
     let mut header = [0u8; 8];
     stream.read_exact(&mut header).await?;
-    
+
     // Validate magic header
     if &header[0..4] != SWARM_MAGIC {
         // Fallback: check if standard 4-byte BE length prefix was used (interop with raw length prefix)

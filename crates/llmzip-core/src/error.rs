@@ -42,18 +42,14 @@ pub enum LlmZipError {
         actual_start: u64,
     },
     /// [E10] Concurrent process lock conflict on the target `.unverified` or `.wal` file.
-    FileLocked {
-        path: String,
-    },
+    FileLocked { path: String },
     /// [E12] Path traversal or forbidden format (e.g., `.bin` pickle file or `../` in shard filename).
     SecurityPathViolation {
         offending_path: String,
         reason: String,
     },
     /// WAL corruption or CRC32 mismatch on crash recovery.
-    WalCorrupted {
-        reason: String,
-    },
+    WalCorrupted { reason: String },
     /// JSON parsing or metadata error.
     MetadataParse(String),
     /// S3 or Cloud Object Storage error (e.g. upload part failure, bucket not found).
@@ -63,39 +59,19 @@ pub enum LlmZipError {
         reason: String,
     },
     /// Cloud authentication expired or forbidden (403 Forbidden).
-    AuthExpired {
-        reason: String,
-    },
+    AuthExpired { reason: String },
     /// Dequantization or SafeTensors inverse export error.
-    DequantError {
-        tensor_name: String,
-        reason: String,
-    },
+    DequantError { tensor_name: String, reason: String },
     /// Hugging Face Hub API or repository error.
-    HfError {
-        repo_id: String,
-        reason: String,
-    },
+    HfError { repo_id: String, reason: String },
     /// Inference target plugin error (Ollama, LM Studio, Jan, SGLang, Strata).
-    PluginError {
-        target: String,
-        reason: String,
-    },
+    PluginError { target: String, reason: String },
     /// Named Pipe / Unix FIFO IPC streaming error.
-    PipeError {
-        pipe_path: String,
-        reason: String,
-    },
+    PipeError { pipe_path: String, reason: String },
     /// Flat P2P Swarm distribution error (e.g. peer timeout, protocol mismatch, poison chunk).
-    SwarmError {
-        peer: String,
-        reason: String,
-    },
+    SwarmError { peer: String, reason: String },
     /// Cluster streaming direct-write error (vLLM / SGLang IPC, shared memory).
-    ClusterError {
-        target: String,
-        reason: String,
-    },
+    ClusterError { target: String, reason: String },
 }
 
 impl fmt::Display for LlmZipError {
@@ -199,19 +175,25 @@ mod tests {
             repo_id: "Qwen/Qwen2.5-7B".to_string(),
             reason: "401 Unauthorized".to_string(),
         };
-        assert!(hf_err.to_string().contains("[HF Error] Repo 'Qwen/Qwen2.5-7B'"));
+        assert!(hf_err
+            .to_string()
+            .contains("[HF Error] Repo 'Qwen/Qwen2.5-7B'"));
 
         let plugin_err = LlmZipError::PluginError {
             target: "ollama".to_string(),
             reason: "directory not found".to_string(),
         };
-        assert!(plugin_err.to_string().contains("[Plugin Error] Target 'ollama'"));
+        assert!(plugin_err
+            .to_string()
+            .contains("[Plugin Error] Target 'ollama'"));
 
         let pipe_err = LlmZipError::PipeError {
             pipe_path: "pipe://test".to_string(),
             reason: "broken pipe".to_string(),
         };
-        assert!(pipe_err.to_string().contains("[Pipe Error] Pipe 'pipe://test'"));
+        assert!(pipe_err
+            .to_string()
+            .contains("[Pipe Error] Pipe 'pipe://test'"));
     }
 
     #[test]
@@ -220,12 +202,16 @@ mod tests {
             peer: "127.0.0.1:6881".to_string(),
             reason: "poison chunk rejected".to_string(),
         };
-        assert!(swarm_err.to_string().contains("[Swarm Error] Peer '127.0.0.1:6881'"));
+        assert!(swarm_err
+            .to_string()
+            .contains("[Swarm Error] Peer '127.0.0.1:6881'"));
 
         let cluster_err = LlmZipError::ClusterError {
             target: "vllm".to_string(),
             reason: "shm buffer overflow".to_string(),
         };
-        assert!(cluster_err.to_string().contains("[Cluster Error] Target 'vllm'"));
+        assert!(cluster_err
+            .to_string()
+            .contains("[Cluster Error] Target 'vllm'"));
     }
 }

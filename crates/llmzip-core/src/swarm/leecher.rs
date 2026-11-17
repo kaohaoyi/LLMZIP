@@ -1,8 +1,8 @@
-use bytes::Bytes;
-use tokio::net::TcpStream;
 use crate::error::LlmZipError;
 use crate::swarm::merkle::{ChunkMeta, Chunker, ModelManifest};
 use crate::swarm::protocol::{read_frame, write_frame, SwarmMessage};
+use bytes::Bytes;
+use tokio::net::TcpStream;
 
 pub struct SwarmLeecher;
 
@@ -13,12 +13,13 @@ impl SwarmLeecher {
         model_id: &str,
         meta: &ChunkMeta,
     ) -> Result<Bytes, LlmZipError> {
-        let mut stream = TcpStream::connect(peer_addr)
-            .await
-            .map_err(|e| LlmZipError::SwarmError {
-                peer: peer_addr.to_string(),
-                reason: format!("Failed to connect to peer: {}", e),
-            })?;
+        let mut stream =
+            TcpStream::connect(peer_addr)
+                .await
+                .map_err(|e| LlmZipError::SwarmError {
+                    peer: peer_addr.to_string(),
+                    reason: format!("Failed to connect to peer: {}", e),
+                })?;
 
         write_frame(
             &mut stream,
@@ -45,7 +46,10 @@ impl SwarmLeecher {
                 if chunk_id != meta.chunk_id {
                     return Err(LlmZipError::SwarmError {
                         peer: peer_addr.to_string(),
-                        reason: format!("Mismatched chunk ID in response: expected {}, got {}", meta.chunk_id, chunk_id),
+                        reason: format!(
+                            "Mismatched chunk ID in response: expected {}, got {}",
+                            meta.chunk_id, chunk_id
+                        ),
                     });
                 }
                 // Verify chunk integrity with poison defense

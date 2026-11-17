@@ -1,20 +1,20 @@
-use llmzip_core::cloud::{CloudCredentials, S3MultipartStreamer};
-use llmzip_core::dequant::{
-    export_safetensors_shards, load_and_dequantize_gguf, DequantDtype,
-};
+use llmzip_core::cloud::{CloudCredentials, S3MultipartStreamer, DEFAULT_S3_PART_SIZE};
+use llmzip_core::dequant::{export_safetensors_shards, load_and_dequantize_gguf, DequantDtype};
+use llmzip_core::hasher::sha256_hex;
 use llmzip_core::hf::streamer::{HfParallelStreamer, HfStreamerConfig};
+use llmzip_core::layout::{
+    build_deterministic_layout, QuantPreset, GGUF_MAGIC_UNVERIFIED, GGUF_MAGIC_VERIFIED,
+};
 use llmzip_core::pipe::named_pipe::{parse_pipe_uri, LlmZipPipe};
 use llmzip_core::plugins::desktop::{JanPlugin, LmStudioPlugin};
 use llmzip_core::plugins::ollama::OllamaPlugin;
 use llmzip_core::plugins::server::{run_ollama_proxy, OllamaProxyConfig};
-use llmzip_core::quant::gguf_simd::{decode_and_validate_upstream_to_f32, quantize_f32_slice};
-use llmzip_core::hasher::sha256_hex;
-use llmzip_core::layout::{
-    build_deterministic_layout, QuantPreset, GGUF_MAGIC_UNVERIFIED, GGUF_MAGIC_VERIFIED,
+use llmzip_core::preflight::{
+    build_virtual_tensor_space, parse_and_validate_header_len, ShardDescriptor,
 };
-use llmzip_core::preflight::{build_virtual_tensor_space, parse_and_validate_header_len, ShardDescriptor};
 use llmzip_core::streamer::{EngineConfig, HttpResponseMeta, LineProfile, StreamingQuantizeEngine};
 use llmzip_core::wal::MicroWal;
+use serde_json::Value;
 use std::env;
 use std::fs;
 use std::io::Read;
@@ -191,61 +191,154 @@ fn parse_line_profile(s: &str) -> Result<LineProfile, String> {
     }
 }
 
-fn cmd_inspect(shard_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    if !shard_path.exists() {
-        return Err(format!(
-            "File '{}' not found.\nTip: Please verify the path exists. For HuggingFace models, specify the first shard.",
-            shard_path.display()
-        )
-        .into());
+fn discover_safetensors_shards(
+    input_path: &Path,
+) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
+    if !input_path.exists() {
+        return Err(format!("Input path '{}' does not exist.", input_path.display()).into());
     }
 
-    let shard_name = shard_path
+    if input_path.is_dir() {
+        let index_json = input_path.join("model.safetensors.index.json");
+        if index_json.exists() {
+            return discover_shards_from_index(&index_json);
+        }
+        let mut shards = Vec::new();
+        for entry in fs::read_dir(input_path)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) == Some("safetensors") {
+                shards.push(path);
+            }
+        }
+        shards.sort();
+        if shards.is_empty() {
+            return Err(format!(
+                "No .safetensors files found in directory '{}'",
+                input_path.display()
+            )
+            .into());
+        }
+        return Ok(shards);
+    }
+
+    let file_name = input_path
         .file_name()
         .and_then(|s| s.to_str())
-        .unwrap_or("model.safetensors");
-    let raw = fs::read(shard_path).map_err(|e| {
-        format!(
-            "Failed to read file '{}': {}.\nTip: Check file permissions.",
-            shard_path.display(),
-            e
-        )
-    })?;
-
-    if raw.len() < 8 {
-        return Err(format!(
-            "File '{}' is too small ({} bytes).\nTip: SafeTensors requires an 8-byte header size prefix. The file may be truncated.",
-            shard_path.display(),
-            raw.len()
-        )
-        .into());
+        .unwrap_or("");
+    if file_name == "model.safetensors.index.json" {
+        return discover_shards_from_index(input_path);
     }
-    let mut len_bytes = [0u8; 8];
-    len_bytes.copy_from_slice(&raw[0..8]);
-    let header_len = parse_and_validate_header_len(shard_name, len_bytes, raw.len() as u64)?;
-    let header_slice = raw[8..8 + (header_len as usize)].to_vec();
-    let sha = sha256_hex(&raw);
 
-    let desc = ShardDescriptor {
-        shard_idx: 0,
-        shard_name: shard_name.to_string(),
-        total_file_size: raw.len() as u64,
-        header_len,
-        expected_sha256_hex: sha.clone(),
-    };
-    let vtas = build_virtual_tensor_space(vec![(desc, header_slice)], false, 8)?;
+    if let Some(parent) = input_path.parent() {
+        let sibling_index = parent.join("model.safetensors.index.json");
+        if sibling_index.exists() {
+            return discover_shards_from_index(&sibling_index);
+        }
+    }
+
+    Ok(vec![input_path.to_path_buf()])
+}
+
+fn discover_shards_from_index(
+    index_path: &Path,
+) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
+    let parent = index_path.parent().unwrap_or(Path::new("."));
+    let content = fs::read_to_string(index_path)?;
+    let val: Value = serde_json::from_str(&content)?;
+    let weight_map = val
+        .get("weight_map")
+        .and_then(|m| m.as_object())
+        .ok_or_else(|| {
+            format!(
+                "Invalid model.safetensors.index.json: missing 'weight_map' object at '{}'",
+                index_path.display()
+            )
+        })?;
+
+    let mut shard_names = std::collections::BTreeSet::new();
+    for (_, v) in weight_map {
+        if let Some(s) = v.as_str() {
+            shard_names.insert(s.to_string());
+        }
+    }
+
+    let mut shards = Vec::new();
+    for name in shard_names {
+        let shard_path = parent.join(&name);
+        if !shard_path.exists() {
+            return Err(format!(
+                "Shard '{}' referenced in index.json does not exist at '{}'",
+                name,
+                shard_path.display()
+            )
+            .into());
+        }
+        shards.push(shard_path);
+    }
+    Ok(shards)
+}
+
+fn cmd_inspect(shard_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let shards = discover_safetensors_shards(shard_path)?;
+    let mut descriptors_and_headers = Vec::with_capacity(shards.len());
+    let mut total_upstream_size = 0u64;
+
+    for (idx, sp) in shards.iter().enumerate() {
+        let shard_name = sp
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("model.safetensors")
+            .to_string();
+        let meta = fs::metadata(sp)?;
+        let file_size = meta.len();
+        total_upstream_size += file_size;
+
+        if file_size < 8 {
+            return Err(format!("Shard '{}' is smaller than 8 bytes", sp.display()).into());
+        }
+
+        let mut f = fs::File::open(sp)?;
+        let mut len_bytes = [0u8; 8];
+        use std::io::Read;
+        f.read_exact(&mut len_bytes)?;
+        let header_len = parse_and_validate_header_len(&shard_name, len_bytes, file_size)?;
+        let mut header_slice = vec![0u8; header_len as usize];
+        f.read_exact(&mut header_slice)?;
+
+        let desc = ShardDescriptor {
+            shard_idx: idx,
+            shard_name,
+            total_file_size: file_size,
+            header_len,
+            expected_sha256_hex: String::new(),
+        };
+        descriptors_and_headers.push((desc, header_slice));
+    }
+
+    let vtas = build_virtual_tensor_space(descriptors_and_headers, false, 8)?;
     let plan = build_deterministic_layout(&vtas, QuantPreset::GgufQ4KM, "llama")?;
 
     println!("================================================================================");
     println!("                   LLMZIP Preflight Inspection Report                           ");
     println!("================================================================================");
-    println!("Shard Name:            {}", shard_name);
-    println!("Upstream Size:         {}", format_bytes(raw.len() as u64));
-    println!("Header Size:           {} bytes", header_len);
-    println!("SHA-256 Checksum:      {}", sha);
+    println!("Total Shards:          {}", shards.len());
+    for (i, sp) in shards.iter().enumerate() {
+        println!("  Shard #{}:            {}", i + 1, sp.display());
+    }
+    println!(
+        "Total Upstream Size:   {}",
+        format_bytes(total_upstream_size)
+    );
     println!("Total Tensors:         {}", vtas.tensors.len());
-    println!("Strictly Topological:  {}", vtas.topology.is_strictly_topological);
-    println!("Tied Word Embeddings:  {}", vtas.topology.tie_word_embeddings);
+    println!(
+        "Strictly Topological:  {}",
+        vtas.topology.is_strictly_topological
+    );
+    println!(
+        "Tied Word Embeddings:  {}",
+        vtas.topology.tie_word_embeddings
+    );
     println!(
         "Planned GGUF Output:   {} (Zero-Temp Pre-allocation)",
         format_bytes(plan.total_output_file_size)
@@ -253,7 +346,7 @@ fn cmd_inspect(shard_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     println!("--------------------------------------------------------------------------------");
     println!(" Tensor Layout Plan (Sample / Mapping):");
     println!("--------------------------------------------------------------------------------");
-    for (t, w) in vtas.tensors.iter().zip(plan.write_targets.iter()) {
+    for (t, w) in vtas.tensors.iter().zip(plan.write_targets.iter()).take(32) {
         println!(
             "  [{:02}] {:38} {:?} -> {:24} {:?} @ 0x{:08X} ({} B, fallback={})",
             t.tensor_id,
@@ -265,6 +358,9 @@ fn cmd_inspect(shard_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
             w.quantized_byte_len,
             w.fallback_applied
         );
+    }
+    if vtas.tensors.len() > 32 {
+        println!("  ... and {} more tensors", vtas.tensors.len() - 32);
     }
     println!("================================================================================");
     Ok(())
@@ -278,13 +374,7 @@ fn cmd_quantize(
     arch: &str,
     line_profile: LineProfile,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if !input_path.exists() {
-        return Err(format!(
-            "Input file '{}' does not exist.\nTip: Check that the path is correct.",
-            input_path.display()
-        )
-        .into());
-    }
+    let shards = discover_safetensors_shards(input_path)?;
 
     if let Some(parent) = output_path.parent() {
         if !parent.as_os_str().is_empty() && !parent.exists() {
@@ -298,40 +388,42 @@ fn cmd_quantize(
         }
     }
 
-    let shard_name = input_path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("model.safetensors");
-    let raw = fs::read(input_path).map_err(|e| {
-        format!(
-            "Failed to read input file '{}': {}",
-            input_path.display(),
-            e
-        )
-    })?;
-    if raw.len() < 8 {
-        return Err(format!(
-            "Input file '{}' is smaller than 8 bytes (truncated or corrupt).",
-            input_path.display()
-        )
-        .into());
+    let mut descriptors_and_headers = Vec::with_capacity(shards.len());
+    for (idx, sp) in shards.iter().enumerate() {
+        let shard_name = sp
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("model.safetensors")
+            .to_string();
+        let meta = fs::metadata(sp)?;
+        let file_size = meta.len();
+        if file_size < 8 {
+            return Err(format!("Shard '{}' is smaller than 8 bytes", sp.display()).into());
+        }
+
+        let mut f = fs::File::open(sp)?;
+        let mut len_bytes = [0u8; 8];
+        use std::io::Read;
+        f.read_exact(&mut len_bytes)?;
+        let header_len = parse_and_validate_header_len(&shard_name, len_bytes, file_size)?;
+        let mut header_slice = vec![0u8; header_len as usize];
+        f.read_exact(&mut header_slice)?;
+
+        let desc = ShardDescriptor {
+            shard_idx: idx,
+            shard_name,
+            total_file_size: file_size,
+            header_len,
+            expected_sha256_hex: String::new(),
+        };
+        descriptors_and_headers.push((desc, header_slice));
     }
-    let mut len_bytes = [0u8; 8];
-    len_bytes.copy_from_slice(&raw[0..8]);
-    let header_len = parse_and_validate_header_len(shard_name, len_bytes, raw.len() as u64)?;
-    let header_slice = raw[8..8 + (header_len as usize)].to_vec();
-    let expected_sha = sha256_hex(&raw);
 
-    let desc = ShardDescriptor {
-        shard_idx: 0,
-        shard_name: shard_name.to_string(),
-        total_file_size: raw.len() as u64,
-        header_len,
-        expected_sha256_hex: expected_sha,
-    };
-
-    println!("[1/4] Preflight: Parsing SafeTensors header and constructing VTAS...");
-    let vtas = build_virtual_tensor_space(vec![(desc, header_slice)], false, 8)?;
+    println!(
+        "[1/4] Preflight: Parsing {} SafeTensors shard(s) and constructing VTAS...",
+        shards.len()
+    );
+    let vtas = build_virtual_tensor_space(descriptors_and_headers, false, 8)?;
 
     println!(
         "[2/4] Layout: Generating deterministic byte layout (Preset: {:?}, Arch: {}, Line: {:?})...",
@@ -351,35 +443,46 @@ fn cmd_quantize(
     };
 
     let mut engine = StreamingQuantizeEngine::new_or_resume(vtas, plan.clone(), output_path, cfg)?;
-    let (_shard_idx, start_offset) = engine.resume_cursor();
+    let mut total_committed = 0;
 
-    let meta = if start_offset == 0 {
-        HttpResponseMeta {
-            status_code: 200,
-            content_range_start: None,
-        }
-    } else {
-        println!("      Resuming from confirmed byte offset {}...", start_offset);
-        HttpResponseMeta {
-            status_code: 206,
-            content_range_start: Some(start_offset),
-        }
-    };
+    for (idx, sp) in shards.iter().enumerate() {
+        let (_shard_idx, start_offset) = engine.resume_cursor();
+        let raw = fs::read(sp)?;
+        let meta = if start_offset == 0 {
+            HttpResponseMeta {
+                status_code: 200,
+                content_range_start: None,
+            }
+        } else {
+            HttpResponseMeta {
+                status_code: 206,
+                content_range_start: Some(start_offset),
+            }
+        };
 
-    let committed = engine.stream_shard_slice(0, meta, &raw[start_offset as usize..], chunk_size, None)?;
+        let slice = if (start_offset as usize) < raw.len() {
+            &raw[start_offset as usize..]
+        } else {
+            &[]
+        };
+
+        let committed = engine.stream_shard_slice(idx, meta, slice, chunk_size, None)?;
+        total_committed += committed;
+    }
+
     println!("[4/4] Commit: Verifying SHA-256 and releasing GGUF magic commit lock...");
 
     if engine.is_committed() {
         println!(
             "\n✓ Successfully committed {} tensors into '{}'\n  Output Size: {}\n  Magic Lock:  'GGUF' (Cryptographically Verified)\n",
-            committed,
+            total_committed,
             output_path.display(),
             format_bytes(plan.total_output_file_size)
         );
     } else {
         println!(
             "\n⚠ Processed {} tensors. Output is currently locked with 'UNVF' magic (stream incomplete).\n",
-            committed
+            total_committed
         );
     }
     Ok(())
@@ -398,6 +501,17 @@ fn parse_s3_part_size(val: &str) -> Result<usize, String> {
     } else {
         val.parse::<usize>()
             .map_err(|_| format!("Invalid S3 part size '{}'", val))
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+struct TempFileGuard(PathBuf);
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+        let mut lock = self.0.clone().into_os_string();
+        lock.push(".lock");
+        let _ = fs::remove_file(lock);
     }
 }
 
@@ -461,11 +575,6 @@ fn cmd_quantize_s3(
     );
     let plan = build_deterministic_layout(&vtas, preset, arch)?;
 
-    println!(
-        "[3/4] S3 Streaming: Connecting to {} (Zero-Temp-File Direct-Write)...",
-        s3_uri_str
-    );
-
     let mut creds = CloudCredentials::from_env();
     if let Some(ep) = s3_endpoint {
         if let Some(ref mut c) = creds {
@@ -481,56 +590,56 @@ fn cmd_quantize_s3(
         }
     }
 
+    println!("[3/4] Streaming & Staging: Quantizing and verifying layout with E03 Commit Lock...");
+
+    let tmp_path = std::env::temp_dir().join(format!(
+        "llmzip_s3_stage_{}_{}.gguf",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _guard = TempFileGuard(tmp_path.clone());
+
+    let cfg = EngineConfig {
+        sanitize_non_finite: sanitize,
+        ..Default::default()
+    };
+
+    let mut engine = StreamingQuantizeEngine::new_or_resume(vtas, plan.clone(), &tmp_path, cfg)?;
+    let meta = HttpResponseMeta {
+        status_code: 200,
+        content_range_start: None,
+    };
+
+    let committed = engine.stream_shard_slice(0, meta, &raw, 64 * 1024 * 1024, None)?;
+    if !engine.is_committed() {
+        return Err("Quantization aborted before cryptographic verification lock".into());
+    }
+
+    println!(
+        "[4/4] S3 Upload: Streaming cryptographically verified GGUF container to {}...",
+        s3_uri_str
+    );
+
     let mut streamer = S3MultipartStreamer::new(s3_uri_str, creds.as_ref(), s3_part_size)?;
-
-    // 1. Write verified GGUF header and pad up to data_section_base_offset
-    let mut header_bytes = plan.unverified_header_bytes.clone();
-    header_bytes[0..4].copy_from_slice(&GGUF_MAGIC_VERIFIED);
-    if (header_bytes.len() as u64) < plan.data_section_base_offset {
-        header_bytes.resize(plan.data_section_base_offset as usize, 0u8);
-    }
-    streamer.write_chunk(&header_bytes)?;
-
-    let mut current_offset = plan.data_section_base_offset;
-    let mut committed = 0;
-
-    // 2. Stream and quantize each tensor in layout order
-    for tensor in &vtas.tensors {
-        let target = &plan.write_targets[tensor.tensor_id];
-
-        // Pad between tensors if aligned offset requires it
-        if target.file_write_offset > current_offset {
-            let pad_len = (target.file_write_offset - current_offset) as usize;
-            let pad = vec![0u8; pad_len];
-            streamer.write_chunk(&pad)?;
-            current_offset += pad_len as u64;
+    let mut staged_file = fs::File::open(&tmp_path)?;
+    let part_size = s3_part_size.unwrap_or(DEFAULT_S3_PART_SIZE);
+    let mut buf = vec![0u8; part_size];
+    use std::io::Read;
+    loop {
+        let n = staged_file.read(&mut buf)?;
+        if n == 0 {
+            break;
         }
-
-        let slice_start = tensor.stream_abs_start as usize;
-        let slice_end = tensor.stream_abs_end as usize;
-        if slice_end > raw.len() {
-            return Err("Input file truncated before tensor end".into());
-        }
-
-        let raw_tensor_slice = &raw[slice_start..slice_end];
-        let f32_elements = decode_and_validate_upstream_to_f32(
-            &tensor.hf_name,
-            raw_tensor_slice,
-            tensor.dtype,
-            sanitize,
-        )?;
-
-        let q_bytes = quantize_f32_slice(&f32_elements, target.assigned_quant);
-        streamer.write_chunk(&q_bytes)?;
-        current_offset += q_bytes.len() as u64;
-        committed += 1;
+        streamer.write_chunk(&buf[..n])?;
     }
 
-    println!("[4/4] Commit: Finalizing S3 Multipart Upload...");
     let total_uploaded = streamer.complete()?;
 
     println!(
-        "\n✓ Successfully streamed and committed {} tensors directly to '{}'\n  Uploaded Size: {}\n",
+        "\n✓ Successfully streamed and committed {} tensors to '{}'\n  Uploaded Size: {}\n",
         committed,
         s3_uri_str,
         format_bytes(total_uploaded),
@@ -591,9 +700,24 @@ fn cmd_quantize_pipe(
         temp_file.push(format!("llmzip_pipe_{}.gguf", std::process::id()));
 
         if let Some(repo) = hf_repo {
-            cmd_quantize_hf(repo, &temp_file, preset, concurrency, 8 * 1024 * 1024, None, None)?;
+            cmd_quantize_hf(
+                repo,
+                &temp_file,
+                preset,
+                concurrency,
+                8 * 1024 * 1024,
+                None,
+                None,
+            )?;
         } else if let Some(local_in) = input_path {
-            cmd_quantize(local_in, &temp_file, preset, false, "llama", LineProfile::Auto)?;
+            cmd_quantize(
+                local_in,
+                &temp_file,
+                preset,
+                false,
+                "llama",
+                LineProfile::Auto,
+            )?;
         }
 
         if temp_file.exists() {
@@ -641,7 +765,10 @@ fn cmd_quantize_hf(
         out_path.display()
     );
     let out = rt.block_on(async { streamer.stream_to_gguf().await })?;
-    println!("[3/3] Successfully quantized and verified: {}", out.display());
+    println!(
+        "[3/3] Successfully quantized and verified: {}",
+        out.display()
+    );
     Ok(())
 }
 
@@ -815,7 +942,11 @@ fn cmd_pull(
     }
 }
 
-fn cmd_serve(port: u16, concurrency: usize, preset: QuantPreset) -> Result<(), Box<dyn std::error::Error>> {
+fn cmd_serve(
+    port: u16,
+    concurrency: usize,
+    preset: QuantPreset,
+) -> Result<(), Box<dyn std::error::Error>> {
     let bind_addr = format!("127.0.0.1:{}", port).parse()?;
     let config = OllamaProxyConfig {
         bind_addr,
@@ -840,7 +971,10 @@ fn cmd_dequantize(
         return Err(format!("Input file '{}' does not exist.", input_path.display()).into());
     }
 
-    println!("[1/3] Reading GGUF file and parsing tensor directory: {}", input_path.display());
+    println!(
+        "[1/3] Reading GGUF file and parsing tensor directory: {}",
+        input_path.display()
+    );
     let export_tensors = load_and_dequantize_gguf(input_path, dtype)?;
 
     println!(
@@ -869,13 +1003,8 @@ fn cmd_verify(output_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
         .into());
     }
 
-    let mut f = fs::File::open(output_path).map_err(|e| {
-        format!(
-            "Failed to open '{}': {}.",
-            output_path.display(),
-            e
-        )
-    })?;
+    let mut f = fs::File::open(output_path)
+        .map_err(|e| format!("Failed to open '{}': {}.", output_path.display(), e))?;
     let mut magic = [0u8; 4];
     if f.read_exact(&mut magic).is_err() {
         return Err(format!(
@@ -1133,7 +1262,9 @@ fn main() {
                     }
                     "--arch" => {
                         if i + 1 >= args.len() {
-                            eprintln!("Error: '--arch' requires a value (e.g., 'llama', 'mixtral').");
+                            eprintln!(
+                                "Error: '--arch' requires a value (e.g., 'llama', 'mixtral')."
+                            );
                             process::exit(1);
                         }
                         arch = args[i + 1].clone();
@@ -1177,7 +1308,9 @@ fn main() {
                 }
             } else {
                 if positional.len() < 2 {
-                    eprintln!("Error: 'quantize' requires both <input.safetensors> and <output.gguf>.\n");
+                    eprintln!(
+                        "Error: 'quantize' requires both <input.safetensors> and <output.gguf>.\n"
+                    );
                     print_quantize_help();
                     process::exit(1);
                 }
@@ -1222,7 +1355,13 @@ fn main() {
         "dequantize" => {
             if args.len() < 3 || (args.len() >= 3 && (args[2] == "-h" || args[2] == "--help")) {
                 print_dequantize_help();
-                process::exit(if args.len() >= 3 && (args[2] == "-h" || args[2] == "--help") { 0 } else { 1 });
+                process::exit(
+                    if args.len() >= 3 && (args[2] == "-h" || args[2] == "--help") {
+                        0
+                    } else {
+                        1
+                    },
+                );
             }
 
             let mut input_path: Option<String> = None;
@@ -1356,7 +1495,13 @@ fn main() {
         "pull" => {
             if args.len() < 3 || args[2] == "-h" || args[2] == "--help" {
                 print_pull_help();
-                process::exit(if args.len() >= 3 && (args[2] == "-h" || args[2] == "--help") { 0 } else { 1 });
+                process::exit(
+                    if args.len() >= 3 && (args[2] == "-h" || args[2] == "--help") {
+                        0
+                    } else {
+                        1
+                    },
+                );
             }
 
             let mut target = "ollama".to_string();
@@ -1371,7 +1516,9 @@ fn main() {
                 match args[i].as_str() {
                     "--target" => {
                         if i + 1 >= args.len() {
-                            eprintln!("Error: '--target' requires a value (e.g. ollama, lm-studio, jan).");
+                            eprintln!(
+                                "Error: '--target' requires a value (e.g. ollama, lm-studio, jan)."
+                            );
                             process::exit(1);
                         }
                         target = args[i + 1].clone();
@@ -1445,7 +1592,14 @@ fn main() {
                 process::exit(1);
             });
 
-            if let Err(e) = cmd_pull(&target, &repo, preset, concurrency, chunk_size, out_dir.as_deref()) {
+            if let Err(e) = cmd_pull(
+                &target,
+                &repo,
+                preset,
+                concurrency,
+                chunk_size,
+                out_dir.as_deref(),
+            ) {
                 eprintln!("Error: {}", e);
                 process::exit(1);
             }
@@ -1525,10 +1679,12 @@ fn main() {
 
 fn cmd_swarm(args: &[String]) {
     if args.is_empty() || args[0] == "-h" || args[0] == "--help" {
-        println!("Usage: llmzip swarm <seed|pull> [options]\n\n\
+        println!(
+            "Usage: llmzip swarm <seed|pull> [options]\n\n\
                   Subcommands:\n  \
                     seed <file_or_repo> [--listen <addr:port>] [--chunk-size <size>]\n  \
-                    pull <model_id> --peers <peer1,peer2,...> [--output <path>]\n");
+                    pull <model_id> --peers <peer1,peer2,...> [--output <path>]\n"
+        );
         process::exit(if args.is_empty() { 1 } else { 0 });
     }
 
@@ -1547,18 +1703,27 @@ fn cmd_swarm(args: &[String]) {
                         if i + 1 < args.len() {
                             listen_addr = args[i + 1].clone();
                             i += 2;
-                        } else { i += 1; }
+                        } else {
+                            i += 1;
+                        }
                     }
                     "--chunk-size" => {
                         if i + 1 < args.len() {
-                            chunk_size = parse_max_shard_size(&args[i + 1]).unwrap_or(8 * 1024 * 1024) as usize;
+                            chunk_size = parse_max_shard_size(&args[i + 1])
+                                .unwrap_or(8 * 1024 * 1024)
+                                as usize;
                             i += 2;
-                        } else { i += 1; }
+                        } else {
+                            i += 1;
+                        }
                     }
                     _ => i += 1,
                 }
             }
-            println!("Starting P2P Swarm Seeder for '{}' on {} (chunk_size: {} bytes)...", model_source, listen_addr, chunk_size);
+            println!(
+                "Starting P2P Swarm Seeder for '{}' on {} (chunk_size: {} bytes)...",
+                model_source, listen_addr, chunk_size
+            );
         }
         "pull" => {
             let model_id = args.get(1).cloned().unwrap_or_else(|| {
@@ -1572,23 +1737,38 @@ fn cmd_swarm(args: &[String]) {
                 match args[i].as_str() {
                     "--peers" => {
                         if i + 1 < args.len() {
-                            peers = args[i + 1].split(',').map(|s| s.trim().to_string()).collect();
+                            peers = args[i + 1]
+                                .split(',')
+                                .map(|s| s.trim().to_string())
+                                .collect();
                             i += 2;
-                        } else { i += 1; }
+                        } else {
+                            i += 1;
+                        }
                     }
                     "--output" => {
                         if i + 1 < args.len() {
                             out_path = Some(args[i + 1].clone());
                             i += 2;
-                        } else { i += 1; }
+                        } else {
+                            i += 1;
+                        }
                     }
                     _ => i += 1,
                 }
             }
-            println!("Pulling '{}' via P2P swarm from {} peers into {:?}", model_id, peers.len(), out_path);
+            println!(
+                "Pulling '{}' via P2P swarm from {} peers into {:?}",
+                model_id,
+                peers.len(),
+                out_path
+            );
         }
         other => {
-            eprintln!("Error: Unknown swarm subcommand '{}'. Use 'seed' or 'pull'.", other);
+            eprintln!(
+                "Error: Unknown swarm subcommand '{}'. Use 'seed' or 'pull'.",
+                other
+            );
             process::exit(1);
         }
     }
@@ -1611,13 +1791,17 @@ fn cmd_cluster(args: &[String]) {
                     if i + 1 < args.len() {
                         target = args[i + 1].clone();
                         i += 2;
-                    } else { i += 1; }
+                    } else {
+                        i += 1;
+                    }
                 }
                 "--tp" => {
                     if i + 1 < args.len() {
                         tp = args[i + 1].parse().unwrap_or(1);
                         i += 2;
-                    } else { i += 1; }
+                    } else {
+                        i += 1;
+                    }
                 }
                 other => {
                     if model_id.is_none() && !other.starts_with('-') {
@@ -1631,7 +1815,10 @@ fn cmd_cluster(args: &[String]) {
             eprintln!("Error: Missing model_id for cluster pull.");
             process::exit(1);
         });
-        println!("Cluster direct-streaming model '{}' to target '{}' with TP={}...", mid, target, tp);
+        println!(
+            "Cluster direct-streaming model '{}' to target '{}' with TP={}...",
+            mid, target, tp
+        );
     }
 }
 
@@ -1657,7 +1844,15 @@ mod tests {
         let _ = fs::remove_file(&out_path);
 
         cmd_inspect(&in_path).unwrap();
-        cmd_quantize(&in_path, &out_path, QuantPreset::GgufQ4KM, false, "llama", LineProfile::Auto).unwrap();
+        cmd_quantize(
+            &in_path,
+            &out_path,
+            QuantPreset::GgufQ4KM,
+            false,
+            "llama",
+            LineProfile::Auto,
+        )
+        .unwrap();
         cmd_verify(&out_path).unwrap();
 
         let _ = fs::remove_file(&in_path);

@@ -9,7 +9,11 @@ pub fn redact_token(token: &str) -> String {
     if token.len() <= 8 {
         "[REDACTED]".to_string()
     } else {
-        format!("{}...[REDACTED]...{}", &token[..4], &token[token.len() - 4..])
+        format!(
+            "{}...[REDACTED]...{}",
+            &token[..4],
+            &token[token.len() - 4..]
+        )
     }
 }
 
@@ -152,10 +156,11 @@ impl HfClient {
             });
         }
 
-        let model_info: HfModelInfoResponse = resp.json().await.map_err(|e| LlmZipError::HfError {
-            repo_id: repo_id.to_string(),
-            reason: format!("Failed to parse Hugging Face model metadata JSON: {}", e),
-        })?;
+        let model_info: HfModelInfoResponse =
+            resp.json().await.map_err(|e| LlmZipError::HfError {
+                repo_id: repo_id.to_string(),
+                reason: format!("Failed to parse Hugging Face model metadata JSON: {}", e),
+            })?;
 
         let mut files = Vec::new();
         if let Some(siblings) = model_info.siblings {
@@ -211,7 +216,8 @@ mod tests {
             revision: "main".to_string(),
             files: vec![HfFileEntry {
                 filename: "model.safetensors".to_string(),
-                url: "https://huggingface.co/Qwen/Qwen2.5-7B/resolve/main/model.safetensors".to_string(),
+                url: "https://huggingface.co/Qwen/Qwen2.5-7B/resolve/main/model.safetensors"
+                    .to_string(),
                 size: Some(1024),
             }],
             auth_token: Some("hf_secret_token_12345".to_string()),
@@ -225,7 +231,11 @@ mod tests {
     #[test]
     fn test_get_download_url() {
         let client = HfClient::with_endpoint(None, "https://huggingface.co/".to_string());
-        let url = client.get_download_url("meta-llama/Llama-3-8B", "main", "model-00001-of-00004.safetensors");
+        let url = client.get_download_url(
+            "meta-llama/Llama-3-8B",
+            "main",
+            "model-00001-of-00004.safetensors",
+        );
         assert_eq!(
             url,
             "https://huggingface.co/meta-llama/Llama-3-8B/resolve/main/model-00001-of-00004.safetensors"

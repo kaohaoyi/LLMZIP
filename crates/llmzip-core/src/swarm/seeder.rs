@@ -1,3 +1,6 @@
+use crate::error::LlmZipError;
+use crate::swarm::merkle::{Chunker, ModelManifest};
+use crate::swarm::protocol::{read_frame, write_frame, SwarmMessage};
 use bytes::Bytes;
 use std::collections::HashMap;
 use std::io;
@@ -5,9 +8,6 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::RwLock;
-use crate::error::LlmZipError;
-use crate::swarm::merkle::{Chunker, ModelManifest};
-use crate::swarm::protocol::{read_frame, write_frame, SwarmMessage};
 
 /// In-memory zero-disk store for seeded model chunks
 pub struct SwarmMemoryStore {
@@ -30,7 +30,10 @@ impl SwarmMemoryStore {
     }
 
     pub async fn insert_manifest(&self, manifest: ModelManifest) {
-        self.manifests.write().await.insert(manifest.model_id.clone(), manifest);
+        self.manifests
+            .write()
+            .await
+            .insert(manifest.model_id.clone(), manifest);
     }
 
     pub async fn get_manifest(&self, model_id: &str) -> Option<ModelManifest> {
@@ -38,11 +41,18 @@ impl SwarmMemoryStore {
     }
 
     pub async fn insert_chunk(&self, model_id: &str, chunk_id: u32, data: Bytes) {
-        self.chunks.write().await.insert((model_id.to_string(), chunk_id), data);
+        self.chunks
+            .write()
+            .await
+            .insert((model_id.to_string(), chunk_id), data);
     }
 
     pub async fn get_chunk(&self, model_id: &str, chunk_id: u32) -> Option<Bytes> {
-        self.chunks.read().await.get(&(model_id.to_string(), chunk_id)).cloned()
+        self.chunks
+            .read()
+            .await
+            .get(&(model_id.to_string(), chunk_id))
+            .cloned()
     }
 }
 
@@ -65,7 +75,12 @@ impl SwarmSeeder {
     }
 
     /// Seeds raw model weights in-memory with zero disk temporaries
-    pub async fn seed_raw_bytes(&self, model_id: &str, data: &[u8], chunk_size: usize) -> ModelManifest {
+    pub async fn seed_raw_bytes(
+        &self,
+        model_id: &str,
+        data: &[u8],
+        chunk_size: usize,
+    ) -> ModelManifest {
         let (manifest, chunks) = Chunker::split(model_id, data, chunk_size);
         self.store.insert_manifest(manifest.clone()).await;
         for (i, chunk) in chunks.into_iter().enumerate() {
@@ -76,10 +91,12 @@ impl SwarmSeeder {
 
     /// Starts the asynchronous TCP seeder server daemon
     pub async fn start(self: Arc<Self>, bind_addr: &str) -> Result<SocketAddr, LlmZipError> {
-        let listener = TcpListener::bind(bind_addr).await.map_err(|e| LlmZipError::SwarmError {
-            peer: bind_addr.to_string(),
-            reason: format!("Failed to bind TCP listener: {}", e),
-        })?;
+        let listener = TcpListener::bind(bind_addr)
+            .await
+            .map_err(|e| LlmZipError::SwarmError {
+                peer: bind_addr.to_string(),
+                reason: format!("Failed to bind TCP listener: {}", e),
+            })?;
         let local_addr = listener.local_addr().map_err(LlmZipError::Io)?;
 
         let seeder = Arc::clone(&self);

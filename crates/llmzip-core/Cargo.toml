@@ -17,3 +17,6 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 tokio = { version = "1.38", features = ["rt-multi-thread", "net", "io-util", "sync", "macros", "time"] }
 thiserror = "1.0"
 ring = "0.17"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

@@ -6,7 +6,7 @@ license.workspace = true
 description = "Python bindings for LLMZIP Community Edition (CE)"
 
 [lib]
-name = "llmzip"
+name = "llmzip_py"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]

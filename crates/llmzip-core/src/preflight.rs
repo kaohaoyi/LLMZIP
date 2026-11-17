@@ -47,7 +47,10 @@ pub enum TensorRole {
     FfnUp,
     FfnDown,
     MoeRouter,
-    MoeExpert { expert_idx: usize, num_experts: usize },
+    MoeExpert {
+        expert_idx: usize,
+        num_experts: usize,
+    },
     LmHead,
     Other,
 }
@@ -96,13 +99,13 @@ impl VirtualTensorEntry {
                     shape: self.shape.clone(),
                 });
             }
-            prod = prod.checked_mul(dim as u64).ok_or_else(|| {
-                LlmZipError::InvalidTensorBounds {
-                    shard_name: format!("shard_{}", self.shard_idx),
-                    tensor_name: self.hf_name.clone(),
-                    reason: "Integer overflow in shape product".to_string(),
-                }
-            })?;
+            prod =
+                prod.checked_mul(dim as u64)
+                    .ok_or_else(|| LlmZipError::InvalidTensorBounds {
+                        shard_name: format!("shard_{}", self.shard_idx),
+                        tensor_name: self.hf_name.clone(),
+                        reason: "Integer overflow in shape product".to_string(),
+                    })?;
         }
         Ok(prod)
     }
@@ -146,10 +149,15 @@ pub fn validate_shard_filename(name: &str) -> Result<()> {
         });
     }
     let lower = name.to_ascii_lowercase();
-    if lower.ends_with(".bin") || lower.ends_with(".pt") || lower.ends_with(".pth") || lower.ends_with(".pkl") {
+    if lower.ends_with(".bin")
+        || lower.ends_with(".pt")
+        || lower.ends_with(".pth")
+        || lower.ends_with(".pkl")
+    {
         return Err(LlmZipError::SecurityPathViolation {
             offending_path: name.to_string(),
-            reason: "PyTorch Pickle (.bin/.pt/.pth) files are strictly rejected to prevent RCE".to_string(),
+            reason: "PyTorch Pickle (.bin/.pt/.pth) files are strictly rejected to prevent RCE"
+                .to_string(),
         });
     }
     if !lower.ends_with(".safetensors") {
@@ -171,7 +179,11 @@ pub fn validate_shard_filename(name: &str) -> Result<()> {
 }
 
 /// Validates the 8-byte little-endian header length prefix of a `.safetensors` file [E01].
-pub fn parse_and_validate_header_len(shard_name: &str, len_bytes: [u8; 8], total_file_size: u64) -> Result<u64> {
+pub fn parse_and_validate_header_len(
+    shard_name: &str,
+    len_bytes: [u8; 8],
+    total_file_size: u64,
+) -> Result<u64> {
     validate_shard_filename(shard_name)?;
     let header_len = u64::from_le_bytes(len_bytes);
     if header_len == 0 || header_len > MAX_SAFETENSORS_HEADER_BYTES {
@@ -181,11 +193,13 @@ pub fn parse_and_validate_header_len(shard_name: &str, len_bytes: [u8; 8], total
             max_allowed: MAX_SAFETENSORS_HEADER_BYTES,
         });
     }
-    let min_file_size = 8u64.checked_add(header_len).ok_or_else(|| LlmZipError::HeaderTooLarge {
-        shard_name: shard_name.to_string(),
-        header_len,
-        max_allowed: MAX_SAFETENSORS_HEADER_BYTES,
-    })?;
+    let min_file_size =
+        8u64.checked_add(header_len)
+            .ok_or_else(|| LlmZipError::HeaderTooLarge {
+                shard_name: shard_name.to_string(),
+                header_len,
+                max_allowed: MAX_SAFETENSORS_HEADER_BYTES,
+            })?;
     if min_file_size > total_file_size {
         return Err(LlmZipError::InvalidTensorBounds {
             shard_name: shard_name.to_string(),
@@ -284,16 +298,20 @@ pub fn parse_safetensors_header(
         });
     }
 
-    let root: BTreeMap<String, Value> = serde_json::from_slice(json_bytes)
-        .map_err(|e| LlmZipError::MetadataParse(format!("Invalid SafeTensors JSON in {}: {}", shard.shard_name, e)))?;
-
-    let data_base_offset = 8u64.checked_add(shard.header_len).ok_or_else(|| {
-        LlmZipError::InvalidTensorBounds {
-            shard_name: shard.shard_name.clone(),
-            tensor_name: "<header>".to_string(),
-            reason: "Overflow computing data base offset".to_string(),
-        }
+    let root: BTreeMap<String, Value> = serde_json::from_slice(json_bytes).map_err(|e| {
+        LlmZipError::MetadataParse(format!(
+            "Invalid SafeTensors JSON in {}: {}",
+            shard.shard_name, e
+        ))
     })?;
+
+    let data_base_offset =
+        8u64.checked_add(shard.header_len)
+            .ok_or_else(|| LlmZipError::InvalidTensorBounds {
+                shard_name: shard.shard_name.clone(),
+                tensor_name: "<header>".to_string(),
+                reason: "Overflow computing data base offset".to_string(),
+            })?;
     let expected_data_section_len = shard
         .total_file_size
         .checked_sub(data_base_offset)
@@ -309,20 +327,21 @@ pub fn parse_safetensors_header(
         if key == "__metadata__" {
             continue;
         }
-        let obj = val.as_object().ok_or_else(|| LlmZipError::InvalidTensorBounds {
-            shard_name: shard.shard_name.clone(),
-            tensor_name: key.clone(),
-            reason: "Tensor descriptor is not a JSON object".to_string(),
-        })?;
-
-        let dtype_str = obj
-            .get("dtype")
-            .and_then(|v| v.as_str())
+        let obj = val
+            .as_object()
             .ok_or_else(|| LlmZipError::InvalidTensorBounds {
                 shard_name: shard.shard_name.clone(),
                 tensor_name: key.clone(),
-                reason: "Missing dtype field".to_string(),
+                reason: "Tensor descriptor is not a JSON object".to_string(),
             })?;
+
+        let dtype_str = obj.get("dtype").and_then(|v| v.as_str()).ok_or_else(|| {
+            LlmZipError::InvalidTensorBounds {
+                shard_name: shard.shard_name.clone(),
+                tensor_name: key.clone(),
+                reason: "Missing dtype field".to_string(),
+            }
+        })?;
         let dtype = UpstreamDType::from_str_dtype(dtype_str).ok_or_else(|| {
             LlmZipError::InvalidTensorBounds {
                 shard_name: shard.shard_name.clone(),
@@ -331,14 +350,13 @@ pub fn parse_safetensors_header(
             }
         })?;
 
-        let shape_arr = obj
-            .get("shape")
-            .and_then(|v| v.as_array())
-            .ok_or_else(|| LlmZipError::InvalidTensorBounds {
+        let shape_arr = obj.get("shape").and_then(|v| v.as_array()).ok_or_else(|| {
+            LlmZipError::InvalidTensorBounds {
                 shard_name: shard.shard_name.clone(),
                 tensor_name: key.clone(),
                 reason: "Missing shape array".to_string(),
-            })?;
+            }
+        })?;
         let mut shape = Vec::with_capacity(shape_arr.len());
         for s in shape_arr {
             let dim = s.as_u64().ok_or_else(|| LlmZipError::InvalidTensorBounds {
@@ -369,16 +387,20 @@ pub fn parse_safetensors_header(
                 reason: "data_offsets must contain exactly 2 integers".to_string(),
             });
         }
-        let start = offsets_arr[0].as_u64().ok_or_else(|| LlmZipError::InvalidTensorBounds {
-            shard_name: shard.shard_name.clone(),
-            tensor_name: key.clone(),
-            reason: "Invalid start offset".to_string(),
-        })?;
-        let end = offsets_arr[1].as_u64().ok_or_else(|| LlmZipError::InvalidTensorBounds {
-            shard_name: shard.shard_name.clone(),
-            tensor_name: key.clone(),
-            reason: "Invalid end offset".to_string(),
-        })?;
+        let start = offsets_arr[0]
+            .as_u64()
+            .ok_or_else(|| LlmZipError::InvalidTensorBounds {
+                shard_name: shard.shard_name.clone(),
+                tensor_name: key.clone(),
+                reason: "Invalid start offset".to_string(),
+            })?;
+        let end = offsets_arr[1]
+            .as_u64()
+            .ok_or_else(|| LlmZipError::InvalidTensorBounds {
+                shard_name: shard.shard_name.clone(),
+                tensor_name: key.clone(),
+                reason: "Invalid end offset".to_string(),
+            })?;
 
         if start >= end || end > expected_data_section_len {
             return Err(LlmZipError::InvalidTensorBounds {
@@ -399,13 +421,14 @@ pub fn parse_safetensors_header(
                 reason: "Overflow computing stream_abs_start".to_string(),
             }
         })?;
-        let stream_abs_end = data_base_offset.checked_add(end).ok_or_else(|| {
-            LlmZipError::InvalidTensorBounds {
-                shard_name: shard.shard_name.clone(),
-                tensor_name: key.clone(),
-                reason: "Overflow computing stream_abs_end".to_string(),
-            }
-        })?;
+        let stream_abs_end =
+            data_base_offset
+                .checked_add(end)
+                .ok_or_else(|| LlmZipError::InvalidTensorBounds {
+                    shard_name: shard.shard_name.clone(),
+                    tensor_name: key.clone(),
+                    reason: "Overflow computing stream_abs_end".to_string(),
+                })?;
 
         let entry = VirtualTensorEntry {
             tensor_id: 0,

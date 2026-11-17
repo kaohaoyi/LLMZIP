@@ -76,7 +76,8 @@ async fn run_mock_hf_server(raw_safetensors: Arc<Vec<u8>>) -> String {
                         let _ = socket.write_all(resp.as_bytes()).await;
                     }
                 } else {
-                    let resp = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                    let resp =
+                        "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
                     let _ = socket.write_all(resp.as_bytes()).await;
                 }
             });
@@ -89,7 +90,8 @@ async fn run_mock_hf_server(raw_safetensors: Arc<Vec<u8>>) -> String {
 #[tokio::test]
 async fn test_hf_parallel_streaming_mock() {
     // 1. Build synthetic SafeTensors bytes
-    let header_json = br#"{"model.norm.weight":{"dtype":"F32","shape":[32],"data_offsets":[0,128]}}"#;
+    let header_json =
+        br#"{"model.norm.weight":{"dtype":"F32","shape":[32],"data_offsets":[0,128]}}"#;
     let header_len = header_json.len() as u64;
 
     let mut raw_data = Vec::new();

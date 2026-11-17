@@ -1,7 +1,7 @@
+use crate::error::LlmZipError;
 use bytes::Bytes;
 use ring::digest::{digest, Context, SHA256};
 use serde::{Deserialize, Serialize};
-use crate::error::LlmZipError;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ChunkMeta {
@@ -24,7 +24,11 @@ pub struct Chunker;
 impl Chunker {
     /// Splits raw byte data into chunks and computes Merkle root and chunk hashes
     pub fn split(model_id: &str, data: &[u8], chunk_size: usize) -> (ModelManifest, Vec<Bytes>) {
-        let chunk_size = if chunk_size == 0 { 1024 * 1024 * 8 } else { chunk_size };
+        let chunk_size = if chunk_size == 0 {
+            1024 * 1024 * 8
+        } else {
+            chunk_size
+        };
         let mut chunks_meta = Vec::new();
         let mut chunks_data = Vec::new();
         let mut root_hasher = Context::new(&SHA256);
@@ -106,6 +110,9 @@ mod tests {
         tampered[0] ^= 0xFF;
         let res = Chunker::verify_chunk(&tampered, &manifest.chunks[0]);
         assert!(res.is_err());
-        assert!(res.unwrap_err().to_string().contains("In-flight poison defense"));
+        assert!(res
+            .unwrap_err()
+            .to_string()
+            .contains("In-flight poison defense"));
     }
 }

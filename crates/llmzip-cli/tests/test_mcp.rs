@@ -35,12 +35,18 @@ fn test_security_path_validation() {
     // 5. Windows 盤符與 UNC 攻擊路徑 (C:\... 或 \\server\share\...)
     match validate_target_path(Path::new(r"C:\Windows\System32\evil.gguf")) {
         Err(SecurityError::PathTraversalDetected) => {}
-        other => panic!("Expected PathTraversalDetected for Windows drive path, got {:?}", other),
+        other => panic!(
+            "Expected PathTraversalDetected for Windows drive path, got {:?}",
+            other
+        ),
     }
 
     match validate_target_path(Path::new(r"\\192.168.1.100\share\loot.gguf")) {
         Err(SecurityError::PathTraversalDetected) => {}
-        other => panic!("Expected PathTraversalDetected for UNC path, got {:?}", other),
+        other => panic!(
+            "Expected PathTraversalDetected for UNC path, got {:?}",
+            other
+        ),
     }
 
     // 6. 空路徑
@@ -123,15 +129,26 @@ fn test_mcp_tools_list() {
     assert_eq!(resp["jsonrpc"], "2.0");
     assert_eq!(resp["id"], 2);
 
-    let tools = resp["result"]["tools"].as_array().expect("Tools must be an array");
+    let tools = resp["result"]["tools"]
+        .as_array()
+        .expect("Tools must be an array");
     let tool_names: Vec<&str> = tools
         .iter()
         .map(|t| t["name"].as_str().expect("Tool must have name"))
         .collect();
 
-    assert!(tool_names.contains(&"llmzip_inspect"), "Must expose llmzip_inspect");
-    assert!(tool_names.contains(&"llmzip_quantize"), "Must expose llmzip_quantize");
-    assert!(tool_names.contains(&"llmzip_verify"), "Must expose llmzip_verify");
+    assert!(
+        tool_names.contains(&"llmzip_inspect"),
+        "Must expose llmzip_inspect"
+    );
+    assert!(
+        tool_names.contains(&"llmzip_quantize"),
+        "Must expose llmzip_quantize"
+    );
+    assert!(
+        tool_names.contains(&"llmzip_verify"),
+        "Must expose llmzip_verify"
+    );
 }
 
 #[test]
@@ -154,7 +171,14 @@ fn test_mcp_security_block_on_call() {
 
     assert_eq!(resp["jsonrpc"], "2.0");
     assert_eq!(resp["id"], 3);
-    assert_eq!(resp["result"]["isError"], true, "Should be flagged as error");
+    assert_eq!(
+        resp["result"]["isError"], true,
+        "Should be flagged as error"
+    );
     let content = resp["result"]["content"][0]["text"].as_str().unwrap();
-    assert!(content.contains("Security violation") || content.contains("Path traversal") || content.contains("Invalid extension"));
+    assert!(
+        content.contains("Security violation")
+            || content.contains("Path traversal")
+            || content.contains("Invalid extension")
+    );
 }

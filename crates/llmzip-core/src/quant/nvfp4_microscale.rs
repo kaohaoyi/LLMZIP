@@ -43,7 +43,11 @@ pub fn f32_to_e2m1(val: f32) -> u8 {
     if val.is_nan() {
         return 0;
     }
-    let sign_bit = if val.is_sign_negative() && val != 0.0 { 0x08 } else { 0x00 };
+    let sign_bit = if val.is_sign_negative() && val != 0.0 {
+        0x08
+    } else {
+        0x00
+    };
     let mag = f32_to_e2m1_magnitude(val.abs());
     sign_bit | mag
 }
@@ -65,7 +69,11 @@ pub fn f32_to_fp8_e4m3fn(val: f32) -> u8 {
     if val.is_nan() {
         return 0x7F; // Canonical NaN in E4M3FN
     }
-    let sign_bit = if val.is_sign_negative() { 0x80u8 } else { 0x00u8 };
+    let sign_bit = if val.is_sign_negative() {
+        0x80u8
+    } else {
+        0x00u8
+    };
     let abs_val = val.abs();
 
     if abs_val >= 448.0 {
@@ -217,7 +225,11 @@ pub fn quantize_nvfp4_sb256(src: &[f32]) -> Vec<u8> {
         for k in 0..16 {
             let sub = &sb[k * 16..(k + 1) * 16];
             let block_scale = global_scale * eff_micro[k];
-            let inv_block_scale = if block_scale > 1e-12 { 1.0 / block_scale } else { 0.0 };
+            let inv_block_scale = if block_scale > 1e-12 {
+                1.0 / block_scale
+            } else {
+                0.0
+            };
 
             for j in 0..8 {
                 let v0 = sub[2 * j];

@@ -58,12 +58,11 @@ impl DeepSeekPlugin {
         });
 
         let config_path = self.out_dir.join("sglang_config.json");
-        let formatted = serde_json::to_string_pretty(&config_json).map_err(|e| {
-            LlmZipError::PluginError {
+        let formatted =
+            serde_json::to_string_pretty(&config_json).map_err(|e| LlmZipError::PluginError {
                 target: "deepseek/sglang".to_string(),
                 reason: format!("Failed serializing SGLang config: {}", e),
-            }
-        })?;
+            })?;
 
         fs::write(&config_path, formatted).map_err(LlmZipError::Io)?;
         Ok(config_path)

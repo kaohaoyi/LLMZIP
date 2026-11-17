@@ -173,7 +173,10 @@ pub async fn fetch_chunk_with_retry(
 
     Err(LlmZipError::HfError {
         repo_id: chunk.shard_name.clone(),
-        reason: format!("Range fetch failed after {} retries: {}", max_retries, last_error),
+        reason: format!(
+            "Range fetch failed after {} retries: {}",
+            max_retries, last_error
+        ),
     })
 }
 
@@ -204,7 +207,8 @@ impl ParallelRangeScheduler {
         let (out_tx, out_rx) = mpsc::channel(self.concurrency * 2);
 
         tokio::spawn(async move {
-            let (raw_tx, mut raw_rx) = mpsc::channel::<(usize, Result<Bytes>)>(self.concurrency * 2);
+            let (raw_tx, mut raw_rx) =
+                mpsc::channel::<(usize, Result<Bytes>)>(self.concurrency * 2);
             let sem = Arc::new(Semaphore::new(self.concurrency));
 
             // Spawn background task to launch downloads bounded by concurrency
@@ -326,9 +330,18 @@ mod tests {
 
         // Now push 1 -> should yield 1, then 2, then 3!
         reassembler.push(1, Bytes::from_static(b"chunk1"));
-        assert_eq!(reassembler.pop_next(), Some((1, Bytes::from_static(b"chunk1"))));
-        assert_eq!(reassembler.pop_next(), Some((2, Bytes::from_static(b"chunk2"))));
-        assert_eq!(reassembler.pop_next(), Some((3, Bytes::from_static(b"chunk3"))));
+        assert_eq!(
+            reassembler.pop_next(),
+            Some((1, Bytes::from_static(b"chunk1")))
+        );
+        assert_eq!(
+            reassembler.pop_next(),
+            Some((2, Bytes::from_static(b"chunk2")))
+        );
+        assert_eq!(
+            reassembler.pop_next(),
+            Some((3, Bytes::from_static(b"chunk3")))
+        );
         assert!(reassembler.pop_next().is_none());
         assert!(reassembler.is_complete(4));
     }

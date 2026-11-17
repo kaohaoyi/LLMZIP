@@ -90,12 +90,11 @@ impl StrataPlugin {
         };
 
         let config_path = self.out_dir.join("strata_config.json");
-        let formatted = serde_json::to_string_pretty(&config).map_err(|e| {
-            LlmZipError::PluginError {
+        let formatted =
+            serde_json::to_string_pretty(&config).map_err(|e| LlmZipError::PluginError {
                 target: "strata".to_string(),
                 reason: format!("Failed serializing strata_config.json: {}", e),
-            }
-        })?;
+            })?;
         fs::write(&config_path, formatted).map_err(LlmZipError::Io)?;
 
         Ok((experts_dir, config_path))

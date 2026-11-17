@@ -1,24 +1,21 @@
 #![allow(clippy::useless_conversion)]
 
 use llmzip_core::cloud::{CloudCredentials, S3MultipartStreamer};
-use llmzip_core::dequant::{
-    export_safetensors_shards, load_and_dequantize_gguf, DequantDtype,
-};
+use llmzip_core::dequant::{export_safetensors_shards, load_and_dequantize_gguf, DequantDtype};
 use llmzip_core::hasher::sha256_hex;
-use llmzip_core::layout::{
-    build_deterministic_layout, QuantPreset, GGUF_MAGIC_VERIFIED,
+use llmzip_core::hf::streamer::{HfParallelStreamer, HfStreamerConfig};
+use llmzip_core::layout::{build_deterministic_layout, QuantPreset};
+use llmzip_core::plugins::desktop::{JanPlugin, LmStudioPlugin};
+use llmzip_core::plugins::ollama::OllamaPlugin;
+use llmzip_core::plugins::strata::StrataPlugin;
+use llmzip_core::preflight::{
+    build_virtual_tensor_space, parse_and_validate_header_len, ShardDescriptor,
 };
-use llmzip_core::preflight::{build_virtual_tensor_space, parse_and_validate_header_len, ShardDescriptor};
-use llmzip_core::quant::gguf_simd::{decode_and_validate_upstream_to_f32, quantize_f32_slice};
 use llmzip_core::streamer::{EngineConfig, HttpResponseMeta, StreamingQuantizeEngine};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 use std::fs;
-use llmzip_core::hf::streamer::{HfParallelStreamer, HfStreamerConfig};
-use llmzip_core::plugins::desktop::{JanPlugin, LmStudioPlugin};
-use llmzip_core::plugins::ollama::OllamaPlugin;
-use llmzip_core::plugins::strata::StrataPlugin;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -71,7 +68,10 @@ fn inspect(py: Python<'_>, path_or_url: &str) -> PyResult<PyObject> {
     }
     let mut len_bytes = [0u8; 8];
     len_bytes.copy_from_slice(&raw[0..8]);
-    let shard_name = p.file_name().and_then(|s| s.to_str()).unwrap_or("model.safetensors");
+    let shard_name = p
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("model.safetensors");
     let header_len = parse_and_validate_header_len(shard_name, len_bytes, raw.len() as u64)
         .map_err(|e| PyValueError::new_err(format!("Invalid header: {}", e)))?;
     let header_slice = raw[8..8 + (header_len as usize)].to_vec();
@@ -154,13 +154,17 @@ fn quantize_stream(
     let is_s3 = out_destination.starts_with("s3://");
     let s3_part_bytes = s3_part_size_mb.unwrap_or(16) * 1024 * 1024;
 
-    let raw = fs::read(input_path).map_err(|e| PyValueError::new_err(format!("Failed to read: {}", e)))?;
+    let raw = fs::read(input_path)
+        .map_err(|e| PyValueError::new_err(format!("Failed to read: {}", e)))?;
     if raw.len() < 8 {
         return Err(PyValueError::new_err("File smaller than 8 bytes"));
     }
     let mut len_bytes = [0u8; 8];
     len_bytes.copy_from_slice(&raw[0..8]);
-    let shard_name = input_path.file_name().and_then(|s| s.to_str()).unwrap_or("model.safetensors");
+    let shard_name = input_path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("model.safetensors");
     let header_len = parse_and_validate_header_len(shard_name, len_bytes, raw.len() as u64)
         .map_err(|e| PyValueError::new_err(format!("Invalid header: {}", e)))?;
     let header_slice = raw[8..8 + (header_len as usize)].to_vec();
@@ -185,68 +189,73 @@ fn quantize_stream(
 
     let committed_count: usize = if is_s3 {
         let creds = CloudCredentials::from_env();
-        let mut streamer = S3MultipartStreamer::new(out_destination, creds.as_ref(), Some(s3_part_bytes))
-            .map_err(|e| PyValueError::new_err(format!("S3 error: {}", e)))?;
-
-        let mut header_bytes = plan.unverified_header_bytes.clone();
-        header_bytes[0..4].copy_from_slice(&GGUF_MAGIC_VERIFIED);
-        if (header_bytes.len() as u64) < plan.data_section_base_offset {
-            header_bytes.resize(plan.data_section_base_offset as usize, 0u8);
-        }
-        streamer
-            .write_chunk(&header_bytes)
-            .map_err(|e| PyValueError::new_err(format!("S3 write header failed: {}", e)))?;
-
-        let mut current_offset = plan.data_section_base_offset;
-        let mut count = 0;
-
-        for tensor in &vtas.tensors {
-            let target = &plan.write_targets[tensor.tensor_id];
-            if target.file_write_offset > current_offset {
-                let pad_len = (target.file_write_offset - current_offset) as usize;
-                let pad = vec![0u8; pad_len];
-                streamer
-                    .write_chunk(&pad)
-                    .map_err(|e| PyValueError::new_err(format!("S3 pad failed: {}", e)))?;
-                current_offset += pad_len as u64;
+        let tmp_path = std::env::temp_dir().join(format!(
+            "llmzip_py_s3_{}_{}.gguf",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        struct TempGuard(std::path::PathBuf);
+        impl Drop for TempGuard {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+                let mut lock = self.0.clone().into_os_string();
+                lock.push(".lock");
+                let _ = std::fs::remove_file(lock);
             }
+        }
+        let _guard = TempGuard(tmp_path.clone());
 
-            let slice_start = tensor.stream_abs_start as usize;
-            let slice_end = tensor.stream_abs_end as usize;
-            let raw_tensor_slice = &raw[slice_start..slice_end];
+        let cfg = EngineConfig::default();
+        let mut engine = StreamingQuantizeEngine::new_or_resume(vtas, plan.clone(), &tmp_path, cfg)
+            .map_err(|e| PyValueError::new_err(format!("Engine error: {}", e)))?;
 
-            // Release GIL during compute
-            let q_bytes = py
-                .allow_threads(|| -> Result<Vec<u8>, String> {
-                    let f32_elements = decode_and_validate_upstream_to_f32(
-                        &tensor.hf_name,
-                        raw_tensor_slice,
-                        tensor.dtype,
-                        false,
-                    )
-                    .map_err(|e| format!("{}", e))?;
-                    let qb = quantize_f32_slice(&f32_elements, target.assigned_quant);
-                    Ok(qb)
-                })
-                .map_err(PyValueError::new_err)?;
+        let meta = HttpResponseMeta {
+            status_code: 200,
+            content_range_start: None,
+        };
 
-            let parts_now = streamer.parts_count();
+        let count = engine
+            .stream_shard_slice(0, meta, &raw, 64 * 1024 * 1024, None)
+            .map_err(|e| PyValueError::new_err(format!("Quantization error: {}", e)))?;
 
+        if !engine.is_committed() {
+            return Err(PyValueError::new_err("Quantization aborted before commit"));
+        }
+
+        let mut streamer =
+            S3MultipartStreamer::new(out_destination, creds.as_ref(), Some(s3_part_bytes))
+                .map_err(|e| PyValueError::new_err(format!("S3 error: {}", e)))?;
+
+        let mut staged_file = std::fs::File::open(&tmp_path)
+            .map_err(|e| PyValueError::new_err(format!("Failed to open staged file: {}", e)))?;
+        let mut buf = vec![0u8; s3_part_bytes];
+        use std::io::Read;
+        let mut uploaded_bytes = 0u64;
+
+        loop {
+            let n = staged_file
+                .read(&mut buf)
+                .map_err(|e| PyValueError::new_err(format!("Read error: {}", e)))?;
+            if n == 0 {
+                break;
+            }
             streamer
-                .write_chunk(&q_bytes)
+                .write_chunk(&buf[..n])
                 .map_err(|e| PyValueError::new_err(format!("S3 write chunk failed: {}", e)))?;
-            current_offset += q_bytes.len() as u64;
-            count += 1;
+            uploaded_bytes += n as u64;
 
             if let Some(ref cb) = progress_callback {
                 let elapsed_sec = start_time.elapsed().as_secs_f64().max(0.001);
-                let speed_mbps = (current_offset as f64 / 1_000_000.0) / elapsed_sec;
+                let speed_mbps = (uploaded_bytes as f64 / 1_000_000.0) / elapsed_sec;
                 let event = PyProgressEvent {
-                    bytes_processed: current_offset,
+                    bytes_processed: uploaded_bytes,
                     total_bytes: total_expected_bytes,
                     speed_mbps,
-                    current_layer: tensor.layer_idx,
-                    s3_parts_completed: Some(parts_now),
+                    current_layer: Some(0),
+                    s3_parts_completed: Some(streamer.parts_count()),
                 };
                 let _ = cb.call1(py, (event,));
             }
@@ -269,9 +278,9 @@ fn quantize_stream(
         };
 
         // Release GIL during file streaming
-        let committed = py.allow_threads(|| {
-            engine.stream_shard_slice(0, meta, &raw, 1024 * 1024, None)
-        }).map_err(|e| PyValueError::new_err(format!("Streaming error: {}", e)))?;
+        let committed = py
+            .allow_threads(|| engine.stream_shard_slice(0, meta, &raw, 1024 * 1024, None))
+            .map_err(|e| PyValueError::new_err(format!("Streaming error: {}", e)))?;
 
         committed
     };
@@ -303,11 +312,15 @@ fn dequantize(
 
     let max_bytes = max_shard_size_gb.map(|gb| (gb * 1024.0 * 1024.0 * 1024.0) as u64);
 
-    let written = py.allow_threads(|| -> Result<Vec<String>, String> {
-        let tensors = load_and_dequantize_gguf(in_p, deq_dtype).map_err(|e| format!("{}", e))?;
-        let paths = export_safetensors_shards(out_p, tensors, max_bytes).map_err(|e| format!("{}", e))?;
-        Ok(paths.into_iter().map(|p| p.display().to_string()).collect())
-    }).map_err(PyValueError::new_err)?;
+    let written = py
+        .allow_threads(|| -> Result<Vec<String>, String> {
+            let tensors =
+                load_and_dequantize_gguf(in_p, deq_dtype).map_err(|e| format!("{}", e))?;
+            let paths = export_safetensors_shards(out_p, tensors, max_bytes)
+                .map_err(|e| format!("{}", e))?;
+            Ok(paths.into_iter().map(|p| p.display().to_string()).collect())
+        })
+        .map_err(PyValueError::new_err)?;
 
     let py_list = PyList::new_bound(py, &written);
     Ok(py_list.into())
@@ -331,109 +344,135 @@ fn pull(
     let repo_id = hf.to_string();
     let out_dir_owned = out_dir.map(|s| s.to_string());
 
-    let result = py.allow_threads(|| -> Result<String, String> {
-        let rt = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .map_err(|e| format!("{}", e))?;
+    let result = py
+        .allow_threads(|| -> Result<String, String> {
+            let rt = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .map_err(|e| format!("{}", e))?;
 
-        match target_owned.as_str() {
-            "ollama" => {
-                let pure_name = repo_id.split('/').next_back().unwrap_or(&repo_id);
-                let temp_gguf = std::env::temp_dir().join(format!("llmzip_py_pull_{}.gguf", std::process::id()));
-                let cfg = HfStreamerConfig {
-                    repo_id: repo_id.clone(),
-                    revision: None,
-                    auth_token: None,
-                    concurrency: conc,
-                    chunk_size: 8 * 1024 * 1024,
-                    preset: quant_preset,
-                    output_path: temp_gguf.clone(),
-                    base_url: None,
-                    expected_sha256: None,
-                };
-                let streamer = HfParallelStreamer::new(cfg);
-                let _ = rt.block_on(async { streamer.stream_to_gguf().await }).map_err(|e| format!("{}", e))?;
+            match target_owned.as_str() {
+                "ollama" => {
+                    let pure_name = repo_id.split('/').next_back().unwrap_or(&repo_id);
+                    let temp_gguf = std::env::temp_dir()
+                        .join(format!("llmzip_py_pull_{}.gguf", std::process::id()));
+                    let cfg = HfStreamerConfig {
+                        repo_id: repo_id.clone(),
+                        revision: None,
+                        auth_token: None,
+                        concurrency: conc,
+                        chunk_size: 8 * 1024 * 1024,
+                        preset: quant_preset,
+                        output_path: temp_gguf.clone(),
+                        base_url: None,
+                        expected_sha256: None,
+                    };
+                    let streamer = HfParallelStreamer::new(cfg);
+                    let _ = rt
+                        .block_on(async { streamer.stream_to_gguf().await })
+                        .map_err(|e| format!("{}", e))?;
 
-                let plugin = OllamaPlugin::new();
-                let (_blob, manifest) = plugin.inject_model(pure_name, "latest", &temp_gguf).map_err(|e| format!("{}", e))?;
-                let _ = fs::remove_file(&temp_gguf);
-                Ok(manifest.display().to_string())
-            }
-            "lm-studio" | "lmstudio" => {
-                let parts: Vec<&str> = repo_id.split('/').collect();
-                let (publ, mdl) = if parts.len() >= 2 { (parts[0], parts[1]) } else { ("library", parts[0]) };
-                let plugin = LmStudioPlugin::new();
-                let out_file = plugin.resolve_model_path(publ, mdl, p_str).map_err(|e| format!("{}", e))?;
-                let cfg = HfStreamerConfig {
-                    repo_id: repo_id.clone(),
-                    revision: None,
-                    auth_token: None,
-                    concurrency: conc,
-                    chunk_size: 8 * 1024 * 1024,
-                    preset: quant_preset,
-                    output_path: out_file.clone(),
-                    base_url: None,
-                    expected_sha256: None,
-                };
-                let streamer = HfParallelStreamer::new(cfg);
-                let _ = rt.block_on(async { streamer.stream_to_gguf().await }).map_err(|e| format!("{}", e))?;
-                Ok(out_file.display().to_string())
-            }
-            "jan" => {
-                let model_id = repo_id.replace('/', "-");
-                let temp_gguf = std::env::temp_dir().join(format!("llmzip_py_jan_{}.gguf", std::process::id()));
-                let cfg = HfStreamerConfig {
-                    repo_id: repo_id.clone(),
-                    revision: None,
-                    auth_token: None,
-                    concurrency: conc,
-                    chunk_size: 8 * 1024 * 1024,
-                    preset: quant_preset,
-                    output_path: temp_gguf.clone(),
-                    base_url: None,
-                    expected_sha256: None,
-                };
-                let streamer = HfParallelStreamer::new(cfg);
-                let _ = rt.block_on(async { streamer.stream_to_gguf().await }).map_err(|e| format!("{}", e))?;
+                    let plugin = OllamaPlugin::new();
+                    let (_blob, manifest) = plugin
+                        .inject_model(pure_name, "latest", &temp_gguf)
+                        .map_err(|e| format!("{}", e))?;
+                    let _ = fs::remove_file(&temp_gguf);
+                    Ok(manifest.display().to_string())
+                }
+                "lm-studio" | "lmstudio" => {
+                    let parts: Vec<&str> = repo_id.split('/').collect();
+                    let (publ, mdl) = if parts.len() >= 2 {
+                        (parts[0], parts[1])
+                    } else {
+                        ("library", parts[0])
+                    };
+                    let plugin = LmStudioPlugin::new();
+                    let out_file = plugin
+                        .resolve_model_path(publ, mdl, p_str)
+                        .map_err(|e| format!("{}", e))?;
+                    let cfg = HfStreamerConfig {
+                        repo_id: repo_id.clone(),
+                        revision: None,
+                        auth_token: None,
+                        concurrency: conc,
+                        chunk_size: 8 * 1024 * 1024,
+                        preset: quant_preset,
+                        output_path: out_file.clone(),
+                        base_url: None,
+                        expected_sha256: None,
+                    };
+                    let streamer = HfParallelStreamer::new(cfg);
+                    let _ = rt
+                        .block_on(async { streamer.stream_to_gguf().await })
+                        .map_err(|e| format!("{}", e))?;
+                    Ok(out_file.display().to_string())
+                }
+                "jan" => {
+                    let model_id = repo_id.replace('/', "-");
+                    let temp_gguf = std::env::temp_dir()
+                        .join(format!("llmzip_py_jan_{}.gguf", std::process::id()));
+                    let cfg = HfStreamerConfig {
+                        repo_id: repo_id.clone(),
+                        revision: None,
+                        auth_token: None,
+                        concurrency: conc,
+                        chunk_size: 8 * 1024 * 1024,
+                        preset: quant_preset,
+                        output_path: temp_gguf.clone(),
+                        base_url: None,
+                        expected_sha256: None,
+                    };
+                    let streamer = HfParallelStreamer::new(cfg);
+                    let _ = rt
+                        .block_on(async { streamer.stream_to_gguf().await })
+                        .map_err(|e| format!("{}", e))?;
 
-                let plugin = JanPlugin::new();
-                let (dest_gguf, _json) = plugin.setup_model_entry(&model_id, &temp_gguf).map_err(|e| format!("{}", e))?;
-                let _ = fs::remove_file(&temp_gguf);
-                Ok(dest_gguf.display().to_string())
-            }
-            "strata" => {
-                let dest_dir = PathBuf::from(out_dir_owned.unwrap_or_else(|| "./strata_models".to_string()));
-                fs::create_dir_all(&dest_dir).map_err(|e| format!("{}", e))?;
-                let shared_weights = dest_dir.join("shared_weights.safetensors");
-                let cfg = HfStreamerConfig {
-                    repo_id: repo_id.clone(),
-                    revision: None,
-                    auth_token: None,
-                    concurrency: conc,
-                    chunk_size: 8 * 1024 * 1024,
-                    preset: quant_preset,
-                    output_path: shared_weights.clone(),
-                    base_url: None,
-                    expected_sha256: None,
-                };
-                let streamer = HfParallelStreamer::new(cfg);
-                let _ = rt.block_on(async { streamer.stream_to_gguf().await }).map_err(|e| format!("{}", e))?;
+                    let plugin = JanPlugin::new();
+                    let (dest_gguf, _json) = plugin
+                        .setup_model_entry(&model_id, &temp_gguf)
+                        .map_err(|e| format!("{}", e))?;
+                    let _ = fs::remove_file(&temp_gguf);
+                    Ok(dest_gguf.display().to_string())
+                }
+                "strata" => {
+                    let dest_dir = PathBuf::from(
+                        out_dir_owned.unwrap_or_else(|| "./strata_models".to_string()),
+                    );
+                    fs::create_dir_all(&dest_dir).map_err(|e| format!("{}", e))?;
+                    let shared_weights = dest_dir.join("shared_weights.safetensors");
+                    let cfg = HfStreamerConfig {
+                        repo_id: repo_id.clone(),
+                        revision: None,
+                        auth_token: None,
+                        concurrency: conc,
+                        chunk_size: 8 * 1024 * 1024,
+                        preset: quant_preset,
+                        output_path: shared_weights.clone(),
+                        base_url: None,
+                        expected_sha256: None,
+                    };
+                    let streamer = HfParallelStreamer::new(cfg);
+                    let _ = rt
+                        .block_on(async { streamer.stream_to_gguf().await })
+                        .map_err(|e| format!("{}", e))?;
 
-                let plugin = StrataPlugin::new(dest_dir.clone());
-                let dummy_bytes = vec![0u8; 256 * 1024];
-                let (_exp_dir, cfg_path) = plugin.partition_experts(&dummy_bytes, 256, &shared_weights, None).map_err(|e| format!("{}", e))?;
-                Ok(cfg_path.display().to_string())
+                    let plugin = StrataPlugin::new(dest_dir.clone());
+                    let dummy_bytes = vec![0u8; 256 * 1024];
+                    let (_exp_dir, cfg_path) = plugin
+                        .partition_experts(&dummy_bytes, 256, &shared_weights, None)
+                        .map_err(|e| format!("{}", e))?;
+                    Ok(cfg_path.display().to_string())
+                }
+                other => Err(format!("Unsupported target '{}'", other)),
             }
-            other => Err(format!("Unsupported target '{}'", other)),
-        }
-    }).map_err(PyValueError::new_err)?;
+        })
+        .map_err(PyValueError::new_err)?;
 
     Ok(result)
 }
 
 #[pymodule]
-fn llmzip(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn llmzip_py(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyProgressEvent>()?;
     m.add_function(wrap_pyfunction!(version, m)?)?;
     m.add_function(wrap_pyfunction!(inspect, m)?)?;
@@ -448,32 +487,24 @@ fn llmzip(m: &Bound<'_, PyModule>) -> PyResult<()> {
 /// Seeds a model into in-memory chunks and computes Merkle root
 #[pyfunction]
 #[pyo3(signature = (model_id, data, chunk_size=8388608))]
-fn swarm_seed(
-    py: Python<'_>,
-    model_id: &str,
-    data: &[u8],
-    chunk_size: usize,
-) -> PyResult<String> {
+fn swarm_seed(py: Python<'_>, model_id: &str, data: &[u8], chunk_size: usize) -> PyResult<String> {
     let mid = model_id.to_string();
     let bytes = data.to_vec();
-    let res = py.allow_threads(|| {
-        let (manifest, _) = llmzip_core::swarm::Chunker::split(&mid, &bytes, chunk_size);
-        serde_json::to_string(&manifest).map_err(|e| format!("{}", e))
-    }).map_err(PyValueError::new_err)?;
+    let res = py
+        .allow_threads(|| {
+            let (manifest, _) = llmzip_core::swarm::Chunker::split(&mid, &bytes, chunk_size);
+            serde_json::to_string(&manifest).map_err(|e| format!("{}", e))
+        })
+        .map_err(PyValueError::new_err)?;
     Ok(res)
 }
 
 /// Pulls a model across peer nodes
 #[pyfunction]
 #[pyo3(signature = (model_id, peers))]
-fn swarm_pull(
-    py: Python<'_>,
-    model_id: &str,
-    peers: Vec<String>,
-) -> PyResult<String> {
+fn swarm_pull(py: Python<'_>, model_id: &str, peers: Vec<String>) -> PyResult<String> {
     let mid = model_id.to_string();
-    let res = py.allow_threads(|| {
-        format!("Swarm pulled model '{}' from {} peers", mid, peers.len())
-    });
+    let res =
+        py.allow_threads(|| format!("Swarm pulled model '{}' from {} peers", mid, peers.len()));
     Ok(res)
 }

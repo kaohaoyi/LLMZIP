@@ -83,7 +83,8 @@ mod tests {
     #[tokio::test]
     async fn test_discovery_add_and_parse() {
         let disc = PeerDiscovery::new();
-        disc.parse_and_add_peers("127.0.0.1:6881, 10.0.0.2:6882").await;
+        disc.parse_and_add_peers("127.0.0.1:6881, 10.0.0.2:6882")
+            .await;
         let peers = disc.get_peers().await;
         assert_eq!(peers.len(), 2);
         assert_eq!(peers[0].address, "127.0.0.1:6881");

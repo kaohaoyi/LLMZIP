@@ -2,14 +2,25 @@ use crate::cloud::client::{build_s3_store, S3Uri};
 use crate::cloud::credentials::CloudCredentials;
 use crate::error::{LlmZipError, Result};
 use bytes::Bytes;
-use futures::executor::block_on;
 use object_store::path::Path as StorePath;
 use object_store::{MultipartUpload, ObjectStore};
 use std::sync::Arc;
 
 pub const DEFAULT_S3_PART_SIZE: usize = 16 * 1024 * 1024; // 16 MiB
-pub const MIN_S3_PART_SIZE: usize = 5 * 1024 * 1024;      // 5 MiB (S3 minimum)
-pub const MAX_S3_PART_SIZE: usize = 64 * 1024 * 1024;     // 64 MiB
+pub const MIN_S3_PART_SIZE: usize = 5 * 1024 * 1024; // 5 MiB (S3 minimum)
+pub const MAX_S3_PART_SIZE: usize = 64 * 1024 * 1024; // 64 MiB
+
+fn run_cloud_future<F: std::future::Future>(f: F) -> F::Output {
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        tokio::task::block_in_place(|| handle.block_on(f))
+    } else {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to initialize Tokio runtime for S3 operations");
+        rt.block_on(f)
+    }
+}
 
 /// Zero-Temp-File streaming direct writer to S3 / Cloudflare R2 / MinIO.
 /// Keeps chunks strictly in RAM (bounded to `part_size`), then flushes directly via S3 Multipart Upload.
@@ -34,11 +45,12 @@ impl S3MultipartStreamer {
             .unwrap_or(DEFAULT_S3_PART_SIZE)
             .clamp(MIN_S3_PART_SIZE, MAX_S3_PART_SIZE);
 
-        let upload = block_on(store.put_multipart(&location)).map_err(|e| LlmZipError::S3Error {
-            bucket: String::new(),
-            key: location.to_string(),
-            reason: format!("Failed to initiate S3 Multipart Upload: {}", e),
-        })?;
+        let upload =
+            run_cloud_future(store.put_multipart(&location)).map_err(|e| LlmZipError::S3Error {
+                bucket: String::new(),
+                key: location.to_string(),
+                reason: format!("Failed to initiate S3 Multipart Upload: {}", e),
+            })?;
 
         Ok(Self {
             location,
@@ -52,7 +64,11 @@ impl S3MultipartStreamer {
     }
 
     /// Creates a new S3 streaming uploader for the specified `s3://` destination.
-    pub fn new(uri: &str, creds: Option<&CloudCredentials>, custom_part_size: Option<usize>) -> Result<Self> {
+    pub fn new(
+        uri: &str,
+        creds: Option<&CloudCredentials>,
+        custom_part_size: Option<usize>,
+    ) -> Result<Self> {
         let parsed = S3Uri::parse(uri)?;
         let store = build_s3_store(&parsed, creds)?;
         let location = StorePath::from(parsed.key.as_str());
@@ -66,7 +82,8 @@ impl S3MultipartStreamer {
         while offset < chunk.len() {
             let space = self.part_size - self.buffer.len();
             let to_copy = space.min(chunk.len() - offset);
-            self.buffer.extend_from_slice(&chunk[offset..offset + to_copy]);
+            self.buffer
+                .extend_from_slice(&chunk[offset..offset + to_copy]);
             offset += to_copy;
 
             if self.buffer.len() >= self.part_size {
@@ -91,7 +108,7 @@ impl S3MultipartStreamer {
         let bytes = Bytes::copy_from_slice(&self.buffer);
         let len = bytes.len() as u64;
 
-        block_on(upload.put_part(bytes.into())).map_err(|e| LlmZipError::S3Error {
+        run_cloud_future(upload.put_part(bytes.into())).map_err(|e| LlmZipError::S3Error {
             bucket: String::new(),
             key: self.location.to_string(),
             reason: format!("UploadPart {} failed: {}", self.parts_count + 1, e),
@@ -115,7 +132,7 @@ impl S3MultipartStreamer {
             reason: "Multipart upload already consumed".to_string(),
         })?;
 
-        block_on(upload.complete()).map_err(|e| LlmZipError::S3Error {
+        run_cloud_future(upload.complete()).map_err(|e| LlmZipError::S3Error {
             bucket: String::new(),
             key: self.location.to_string(),
             reason: format!("CompleteMultipartUpload failed: {}", e),
@@ -128,7 +145,7 @@ impl S3MultipartStreamer {
     /// Explicitly aborts the in-flight S3 Multipart Upload to prevent orphaned storage charges.
     pub fn abort(&mut self) -> Result<()> {
         if let Some(mut upload) = self.upload.take() {
-            block_on(upload.abort()).map_err(|e| LlmZipError::S3Error {
+            run_cloud_future(upload.abort()).map_err(|e| LlmZipError::S3Error {
                 bucket: String::new(),
                 key: self.location.to_string(),
                 reason: format!("AbortMultipartUpload failed: {}", e),

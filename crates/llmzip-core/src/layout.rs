@@ -205,7 +205,9 @@ pub fn select_quant_format_with_fallback(
         }
     }
 
-    if inner_dim.is_multiple_of(QuantFormat::GgufQ8_0.block_elements()) && preset != QuantPreset::AwqW4G128 {
+    if inner_dim.is_multiple_of(QuantFormat::GgufQ8_0.block_elements())
+        && preset != QuantPreset::AwqW4G128
+    {
         (QuantFormat::GgufQ8_0, true)
     } else {
         (QuantFormat::GgufF16, true)
@@ -279,7 +281,8 @@ pub fn build_deterministic_layout(
     arch_name: &str,
 ) -> Result<DeterministicLayoutPlan> {
     let alignment = GGUF_DEFAULT_ALIGNMENT;
-    let mut gguf_dir_map: BTreeMap<String, (GgufTensorDirectoryEntry, Vec<(usize, usize)>)> = BTreeMap::new();
+    let mut gguf_dir_map: BTreeMap<String, (GgufTensorDirectoryEntry, Vec<(usize, usize)>)> =
+        BTreeMap::new();
     let mut single_slice_sizes = Vec::with_capacity(vtas.tensors.len());
     let mut assigned_quants = Vec::with_capacity(vtas.tensors.len());
 
@@ -342,7 +345,11 @@ pub fn build_deterministic_layout(
     // If Weight Tying is active (`tie_word_embeddings`) and `output.weight` is not present, allocate an explicit slot for `output.weight` [E07].
     let mut tied_embd_tensor_id: Option<usize> = None;
     if vtas.topology.tie_word_embeddings && !gguf_dir_map.contains_key("output.weight") {
-        if let Some(embd_t) = vtas.tensors.iter().find(|t| t.role == TensorRole::Embedding) {
+        if let Some(embd_t) = vtas
+            .tensors
+            .iter()
+            .find(|t| t.role == TensorRole::Embedding)
+        {
             tied_embd_tensor_id = Some(embd_t.tensor_id);
             let (quant, _) = assigned_quants[embd_t.tensor_id];
             let slice_bytes = single_slice_sizes[embd_t.tensor_id];

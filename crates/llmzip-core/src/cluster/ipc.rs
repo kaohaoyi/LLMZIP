@@ -1,10 +1,10 @@
+use crate::error::LlmZipError;
 use bytes::{BufMut, BytesMut};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
-use crate::error::LlmZipError;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TensorIpcDescriptor {
@@ -27,11 +27,16 @@ pub struct ClusterIpcChannel;
 
 impl ClusterIpcChannel {
     /// Creates a connected pair of IPC endpoints (Sender and Receiver)
-    pub async fn create_pair(_name: &str) -> Result<(ClusterIpcSender, ClusterIpcReceiver), LlmZipError> {
-        let listener = TcpListener::bind("127.0.0.1:0").await.map_err(|e| LlmZipError::ClusterError {
-            target: "ipc".to_string(),
-            reason: format!("Failed to bind local IPC listener: {}", e),
-        })?;
+    pub async fn create_pair(
+        _name: &str,
+    ) -> Result<(ClusterIpcSender, ClusterIpcReceiver), LlmZipError> {
+        let listener =
+            TcpListener::bind("127.0.0.1:0")
+                .await
+                .map_err(|e| LlmZipError::ClusterError {
+                    target: "ipc".to_string(),
+                    reason: format!("Failed to bind local IPC listener: {}", e),
+                })?;
         let addr = listener.local_addr().map_err(LlmZipError::Io)?;
 
         let connect_fut = TcpStream::connect(addr);
@@ -86,11 +91,17 @@ impl ClusterIpcReceiver {
     pub async fn recv_descriptor(&self) -> Result<TensorIpcDescriptor, LlmZipError> {
         let mut stream = self.stream.lock().await;
         let mut len_buf = [0u8; 4];
-        stream.read_exact(&mut len_buf).await.map_err(LlmZipError::Io)?;
+        stream
+            .read_exact(&mut len_buf)
+            .await
+            .map_err(LlmZipError::Io)?;
         let len = u32::from_be_bytes(len_buf) as usize;
 
         let mut payload = vec![0u8; len];
-        stream.read_exact(&mut payload).await.map_err(LlmZipError::Io)?;
+        stream
+            .read_exact(&mut payload)
+            .await
+            .map_err(LlmZipError::Io)?;
 
         serde_json::from_slice(&payload).map_err(|e| LlmZipError::ClusterError {
             target: "ipc".to_string(),

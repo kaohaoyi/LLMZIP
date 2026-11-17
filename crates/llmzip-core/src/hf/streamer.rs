@@ -2,7 +2,9 @@ use crate::error::{LlmZipError, Result};
 use crate::hf::client::{HfClient, HfFileEntry};
 use crate::hf::range_scheduler::{generate_chunks, ParallelRangeScheduler, DEFAULT_CHUNK_SIZE};
 use crate::layout::{build_deterministic_layout, QuantPreset};
-use crate::preflight::{build_virtual_tensor_space, parse_and_validate_header_len, ShardDescriptor};
+use crate::preflight::{
+    build_virtual_tensor_space, parse_and_validate_header_len, ShardDescriptor,
+};
 use crate::streamer::{EngineConfig, HttpResponseMeta, StreamingQuantizeEngine};
 use reqwest::header::{CONTENT_RANGE, RANGE};
 use std::path::PathBuf;
@@ -64,10 +66,7 @@ impl HfParallelStreamer {
     }
 
     /// Fetches the initial SafeTensors header for a remote file via HTTP Range.
-    async fn fetch_header_and_size(
-        &self,
-        file: &HfFileEntry,
-    ) -> Result<(u64, Vec<u8>, u64)> {
+    async fn fetch_header_and_size(&self, file: &HfFileEntry) -> Result<(u64, Vec<u8>, u64)> {
         // Request first 64 KiB which covers 99.9% of SafeTensors headers
         let prefetch_size = 65_536u64;
         let range_hdr = format!("bytes=0-{}", prefetch_size - 1);
@@ -79,20 +78,30 @@ impl HfParallelStreamer {
 
         let resp = req.send().await.map_err(|e| LlmZipError::HfError {
             repo_id: self.config.repo_id.clone(),
-            reason: format!("Failed to fetch SafeTensors header for {}: {}", file.filename, e),
+            reason: format!(
+                "Failed to fetch SafeTensors header for {}: {}",
+                file.filename, e
+            ),
         })?;
 
         let status = resp.status();
         if status != reqwest::StatusCode::PARTIAL_CONTENT && status != reqwest::StatusCode::OK {
             return Err(LlmZipError::HfError {
                 repo_id: self.config.repo_id.clone(),
-                reason: format!("Upstream HTTP {} fetching header for {}", status, file.filename),
+                reason: format!(
+                    "Upstream HTTP {} fetching header for {}",
+                    status, file.filename
+                ),
             });
         }
 
         // Parse total file size from Content-Range or file metadata
         let mut total_file_size = file.size.unwrap_or(0);
-        if let Some(cr) = resp.headers().get(CONTENT_RANGE).and_then(|v| v.to_str().ok()) {
+        if let Some(cr) = resp
+            .headers()
+            .get(CONTENT_RANGE)
+            .and_then(|v| v.to_str().ok())
+        {
             if let Some(slash_idx) = cr.rfind('/') {
                 if let Ok(total) = cr[slash_idx + 1..].trim().parse::<u64>() {
                     total_file_size = total;
@@ -108,7 +117,10 @@ impl HfParallelStreamer {
         if initial_bytes.len() < 8 {
             return Err(LlmZipError::HfError {
                 repo_id: self.config.repo_id.clone(),
-                reason: format!("File {} is smaller than 8 bytes (invalid SafeTensors)", file.filename),
+                reason: format!(
+                    "File {} is smaller than 8 bytes (invalid SafeTensors)",
+                    file.filename
+                ),
             });
         }
 
@@ -135,7 +147,10 @@ impl HfParallelStreamer {
             }
             let rem_resp = rem_req.send().await.map_err(|e| LlmZipError::HfError {
                 repo_id: self.config.repo_id.clone(),
-                reason: format!("Failed fetching header continuation for {}: {}", file.filename, e),
+                reason: format!(
+                    "Failed fetching header continuation for {}: {}",
+                    file.filename, e
+                ),
             })?;
             let rem_bytes = rem_resp.bytes().await.map_err(|e| LlmZipError::HfError {
                 repo_id: self.config.repo_id.clone(),
@@ -184,11 +199,7 @@ impl HfParallelStreamer {
         let vtas = build_virtual_tensor_space(shards_with_headers.clone(), false, 0)?;
 
         // 3. Build Deterministic Layout Plan
-        let plan = build_deterministic_layout(
-            &vtas,
-            self.config.preset,
-            "llama",
-        )?;
+        let plan = build_deterministic_layout(&vtas, self.config.preset, "llama")?;
 
         // 4. Initialize Streaming Engine
         let mut engine = StreamingQuantizeEngine::new_or_resume(
@@ -221,13 +232,7 @@ impl HfParallelStreamer {
                     content_range_start: Some(engine.resume_cursor().1),
                 };
                 let chunk_len = chunk_bytes.len();
-                engine.stream_shard_slice(
-                    shard_idx,
-                    http_meta,
-                    &chunk_bytes,
-                    chunk_len,
-                    None,
-                )?;
+                engine.stream_shard_slice(shard_idx, http_meta, &chunk_bytes, chunk_len, None)?;
             }
         }
 
@@ -237,4 +242,3 @@ impl HfParallelStreamer {
         Ok(self.config.output_path.clone())
     }
 }
-

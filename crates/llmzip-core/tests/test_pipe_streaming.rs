@@ -36,7 +36,9 @@ async fn test_pipe_roundtrip_and_broken_pipe() {
     });
 
     // Server waits for reader and writes 16 bytes
-    pipe.wait_for_reader().await.expect("Wait for reader failed");
+    pipe.wait_for_reader()
+        .await
+        .expect("Wait for reader failed");
     let test_data = b"0123456789ABCDEF";
     pipe.write_all(test_data).await.expect("Write all failed");
     pipe.flush().await.expect("Flush failed");

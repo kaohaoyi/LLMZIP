@@ -8,11 +8,17 @@ pub const AWQ_GROUP_BYTES: usize = 68;
 /// Quantizes `src` (whose length must be a multiple of 128) into AWQ INT4 group-128 format,
 /// optionally applying per-input-channel activation scales `channel_scales` ($W \cdot \text{diag}(s)$).
 pub fn quantize_awq_int4_g128(src: &[f32], channel_scales: Option<&[f32]>) -> Vec<u8> {
+    if src.is_empty() {
+        return Vec::new();
+    }
     assert_eq!(src.len() % AWQ_GROUP_SIZE, 0);
     let num_groups = src.len() / AWQ_GROUP_SIZE;
     let mut out = Vec::with_capacity(num_groups * AWQ_GROUP_BYTES);
 
-    let inner_dim = channel_scales.map(|s| s.len()).unwrap_or(src.len());
+    let inner_dim = match channel_scales {
+        Some(s) if !s.is_empty() => s.len(),
+        _ => src.len(),
+    };
 
     for g in 0..num_groups {
         let base_idx = g * AWQ_GROUP_SIZE;
@@ -42,7 +48,11 @@ pub fn quantize_awq_int4_g128(src: &[f32], channel_scales: Option<&[f32]>) -> Ve
 
         let scale_f16 = f32_to_f16_clamped(scale);
         let eff_scale = f16_to_f32(scale_f16);
-        let eff_inv_scale = if eff_scale > 0.0 { 1.0 / eff_scale } else { 0.0 };
+        let eff_inv_scale = if eff_scale > 0.0 {
+            1.0 / eff_scale
+        } else {
+            0.0
+        };
 
         out.extend_from_slice(&scale_f16.to_le_bytes());
         out.extend_from_slice(&min_f16.to_le_bytes());

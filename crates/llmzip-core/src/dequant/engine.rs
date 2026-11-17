@@ -44,11 +44,29 @@ pub fn f32_to_bf16_bytes(src: &[f32]) -> Vec<u8> {
     let mut out = Vec::with_capacity(src.len() * 2);
     for &val in src {
         let u = val.to_bits();
-        // Round to nearest even: add lsb of bf16 + 0x7fff
-        let lsb = (u >> 16) & 1;
-        let rounding_bias = 0x7FFF + lsb;
-        let rounded = u.wrapping_add(rounding_bias);
-        let bf16 = (rounded >> 16) as u16;
+        let exp = (u >> 23) & 0xFF;
+        let mant = u & 0x007FFFFF;
+        let bf16 = if exp == 0xFF {
+            if mant != 0 {
+                // NaN: preserve sign and ensure quiet NaN bit is set
+                ((u >> 16) as u16) | 0x0040
+            } else {
+                // Inf: preserve sign and infinity exponent
+                (u >> 16) as u16
+            }
+        } else {
+            // Round to nearest even
+            let lsb = (u >> 16) & 1;
+            let rounding_bias = 0x7FFF + lsb;
+            let rounded = u.wrapping_add(rounding_bias);
+            let mut res = (rounded >> 16) as u16;
+            if ((res >> 7) & 0xFF) == 0xFF {
+                // Prevent finite numbers from overflowing to Inf
+                let sign = (u >> 16) & 0x8000;
+                res = (sign as u16) | 0x7F7F;
+            }
+            res
+        };
         out.extend_from_slice(&bf16.to_le_bytes());
     }
     out
@@ -168,9 +186,18 @@ mod tests {
 
     #[test]
     fn test_gguf_to_hf_name_mapping() {
-        assert_eq!(gguf_to_hf_name("token_embd.weight"), "model.embed_tokens.weight");
-        assert_eq!(gguf_to_hf_name("blk.0.attn_q.weight"), "model.layers.0.self_attn.q_proj.weight");
-        assert_eq!(gguf_to_hf_name("blk.15.ffn_down.weight"), "model.layers.15.mlp.down_proj.weight");
+        assert_eq!(
+            gguf_to_hf_name("token_embd.weight"),
+            "model.embed_tokens.weight"
+        );
+        assert_eq!(
+            gguf_to_hf_name("blk.0.attn_q.weight"),
+            "model.layers.0.self_attn.q_proj.weight"
+        );
+        assert_eq!(
+            gguf_to_hf_name("blk.15.ffn_down.weight"),
+            "model.layers.15.mlp.down_proj.weight"
+        );
         assert_eq!(gguf_to_hf_name("output_norm.weight"), "model.norm.weight");
         assert_eq!(gguf_to_hf_name("output.weight"), "lm_head.weight");
         assert_eq!(gguf_to_hf_name("custom_tensor"), "custom_tensor");

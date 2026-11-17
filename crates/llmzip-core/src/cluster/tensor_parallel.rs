@@ -27,7 +27,10 @@ impl TensorParallelScheduler {
         if rank >= self.world_size {
             return Err(LlmZipError::ClusterError {
                 target: "tensor_parallel".to_string(),
-                reason: format!("Rank {} out of bounds for world size {}", rank, self.world_size),
+                reason: format!(
+                    "Rank {} out of bounds for world size {}",
+                    rank, self.world_size
+                ),
             });
         }
 
@@ -41,7 +44,11 @@ impl TensorParallelScheduler {
         let target_dim = match kind {
             TpSplitKind::ColumnParallel => 0,
             TpSplitKind::RowParallel => {
-                if shape.len() > 1 { 1 } else { 0 }
+                if shape.len() > 1 {
+                    1
+                } else {
+                    0
+                }
             }
         };
 

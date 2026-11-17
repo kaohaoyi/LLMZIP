@@ -58,7 +58,10 @@ impl fmt::Debug for CloudCredentials {
         f.debug_struct("CloudCredentials")
             .field("access_key_id", &self.access_key_id)
             .field("secret_access_key", &"***REDACTED***")
-            .field("session_token", &self.session_token.as_ref().map(|_| "***REDACTED***"))
+            .field(
+                "session_token",
+                &self.session_token.as_ref().map(|_| "***REDACTED***"),
+            )
             .field("endpoint_url", &self.endpoint_url)
             .field("region", &self.region)
             .finish()
@@ -98,6 +101,9 @@ mod tests {
         let clean = creds.sanitize(log_msg);
         assert!(!clean.contains("SuperSecretKey123"));
         assert!(!clean.contains("TokenXYZ"));
-        assert_eq!(clean, "Error connecting with ***REDACTED_SECRET*** and ***REDACTED_TOKEN***");
+        assert_eq!(
+            clean,
+            "Error connecting with ***REDACTED_SECRET*** and ***REDACTED_TOKEN***"
+        );
     }
 }

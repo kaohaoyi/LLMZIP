@@ -2,7 +2,9 @@ use llmzip_core::hasher::sha256_hex;
 use llmzip_core::layout::{
     build_deterministic_layout, QuantPreset, GGUF_MAGIC_UNVERIFIED, GGUF_MAGIC_VERIFIED,
 };
-use llmzip_core::preflight::{build_virtual_tensor_space, parse_and_validate_header_len, ShardDescriptor};
+use llmzip_core::preflight::{
+    build_virtual_tensor_space, parse_and_validate_header_len, ShardDescriptor,
+};
 use llmzip_core::streamer::{EngineConfig, HttpResponseMeta, StreamingQuantizeEngine};
 use llmzip_core::wal::MicroWal;
 use std::ffi::CStr;
@@ -213,7 +215,8 @@ mod tests {
         }
 
         // Build a synthetic .safetensors on disk and call C ABI `llmzip_stream_quantize_file`
-        let header_json = br#"{"model.norm.weight":{"dtype":"F32","shape":[32],"data_offsets":[0,128]}}"#;
+        let header_json =
+            br#"{"model.norm.weight":{"dtype":"F32","shape":[32],"data_offsets":[0,128]}}"#;
         let header_len = header_json.len() as u64;
         let mut raw = Vec::new();
         raw.extend_from_slice(&header_len.to_le_bytes());
@@ -233,7 +236,8 @@ mod tests {
         let c_in = CString::new(in_path.to_str().unwrap()).unwrap();
         let c_out = CString::new(out_path.to_str().unwrap()).unwrap();
 
-        let status = unsafe { llmzip_stream_quantize_file(c_in.as_ptr(), c_out.as_ptr(), 0, false) };
+        let status =
+            unsafe { llmzip_stream_quantize_file(c_in.as_ptr(), c_out.as_ptr(), 0, false) };
         assert_eq!(status, LLMZIP_OK);
 
         // Verify with llmzip_verify_file

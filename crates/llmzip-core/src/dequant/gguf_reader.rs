@@ -24,25 +24,54 @@ fn read_gguf_string<R: Read>(reader: &mut R) -> Result<String> {
     reader.read_exact(&mut len_buf)?;
     let len = u64::from_le_bytes(len_buf) as usize;
     if len > 64 * 1024 * 1024 {
-        return Err(LlmZipError::MetadataParse("GGUF string exceeds 64MB".to_string()));
+        return Err(LlmZipError::MetadataParse(
+            "GGUF string exceeds 64MB".to_string(),
+        ));
     }
     let mut str_buf = vec![0u8; len];
     reader.read_exact(&mut str_buf)?;
-    String::from_utf8(str_buf).map_err(|e| LlmZipError::MetadataParse(format!("Invalid UTF-8: {}", e)))
+    String::from_utf8(str_buf)
+        .map_err(|e| LlmZipError::MetadataParse(format!("Invalid UTF-8: {}", e)))
 }
 
 fn skip_metadata_value<R: Read + Seek>(reader: &mut R, val_type: u32) -> Result<()> {
+    skip_metadata_value_with_depth(reader, val_type, 0)
+}
+
+fn skip_metadata_value_with_depth<R: Read + Seek>(
+    reader: &mut R,
+    val_type: u32,
+    depth: usize,
+) -> Result<()> {
+    if depth > 64 {
+        return Err(LlmZipError::MetadataParse(
+            "Nested GGUF metadata array exceeded maximum recursion depth (64)".to_string(),
+        ));
+    }
     match val_type {
-        0 | 1 | 7 => { reader.seek(SeekFrom::Current(1))?; } // u8, i8, bool
-        2 | 3 => { reader.seek(SeekFrom::Current(2))?; }     // u16, i16
-        4..=6 => { reader.seek(SeekFrom::Current(4))?; } // u32, i32, f32
-        10..=12 => { reader.seek(SeekFrom::Current(8))?; } // u64, i64, f64
+        0 | 1 | 7 => {
+            reader.seek(SeekFrom::Current(1))?;
+        } // u8, i8, bool
+        2 | 3 => {
+            reader.seek(SeekFrom::Current(2))?;
+        } // u16, i16
+        4..=6 => {
+            reader.seek(SeekFrom::Current(4))?;
+        } // u32, i32, f32
+        10..=12 => {
+            reader.seek(SeekFrom::Current(8))?;
+        } // u64, i64, f64
         8 => {
             // String
             let mut len_buf = [0u8; 8];
             reader.read_exact(&mut len_buf)?;
-            let len = u64::from_le_bytes(len_buf) as i64;
-            reader.seek(SeekFrom::Current(len))?;
+            let len = u64::from_le_bytes(len_buf);
+            if len > 64 * 1024 * 1024 {
+                return Err(LlmZipError::MetadataParse(
+                    "GGUF string exceeds 64MB".to_string(),
+                ));
+            }
+            reader.seek(SeekFrom::Current(len as i64))?;
         }
         9 => {
             // Array: [elem_type: u32] [count: u64] [items...]
@@ -52,12 +81,21 @@ fn skip_metadata_value<R: Read + Seek>(reader: &mut R, val_type: u32) -> Result<
             let mut count_buf = [0u8; 8];
             reader.read_exact(&mut count_buf)?;
             let count = u64::from_le_bytes(count_buf);
+            if count > 1_000_000 {
+                return Err(LlmZipError::MetadataParse(format!(
+                    "GGUF array count {} exceeds safe limit (1,000,000)",
+                    count
+                )));
+            }
             for _ in 0..count {
-                skip_metadata_value(reader, elem_type)?;
+                skip_metadata_value_with_depth(reader, elem_type, depth + 1)?;
             }
         }
         other => {
-            return Err(LlmZipError::MetadataParse(format!("Unknown GGUF metadata type {}", other)));
+            return Err(LlmZipError::MetadataParse(format!(
+                "Unknown GGUF metadata type {}",
+                other
+            )));
         }
     }
     Ok(())
@@ -111,7 +149,10 @@ pub fn load_and_dequantize_gguf(
     file.read_exact(&mut version_buf)?;
     let version = u32::from_le_bytes(version_buf);
     if !(2..=3).contains(&version) {
-        return Err(LlmZipError::MetadataParse(format!("Unsupported GGUF version {}", version)));
+        return Err(LlmZipError::MetadataParse(format!(
+            "Unsupported GGUF version {}",
+            version
+        )));
     }
 
     let mut count_buf = [0u8; 8];
@@ -151,6 +192,12 @@ pub fn load_and_dequantize_gguf(
         let mut n_dims_buf = [0u8; 4];
         file.read_exact(&mut n_dims_buf)?;
         let n_dims = u32::from_le_bytes(n_dims_buf) as usize;
+        if n_dims > 16 {
+            return Err(LlmZipError::MetadataParse(format!(
+                "Tensor '{}' has invalid dimension count: {}",
+                name, n_dims
+            )));
+        }
 
         let mut dims = Vec::with_capacity(n_dims);
         let mut total_elements: u64 = 1;
@@ -159,7 +206,9 @@ pub fn load_and_dequantize_gguf(
             file.read_exact(&mut dim_buf)?;
             let d = u64::from_le_bytes(dim_buf);
             dims.push(d as usize);
-            total_elements *= d;
+            total_elements = total_elements.checked_mul(d).ok_or_else(|| {
+                LlmZipError::MetadataParse(format!("Tensor '{}' dimensions overflow", name))
+            })?;
         }
 
         let mut type_buf = [0u8; 4];
@@ -176,7 +225,9 @@ pub fn load_and_dequantize_gguf(
         let blk_elements = format.block_elements() as u64;
         let blk_bytes = format.block_bytes();
         let num_blocks = total_elements.div_ceil(blk_elements);
-        let byte_len = num_blocks * blk_bytes;
+        let byte_len = num_blocks.checked_mul(blk_bytes).ok_or_else(|| {
+            LlmZipError::MetadataParse(format!("Tensor '{}' byte length overflow", name))
+        })?;
 
         parsed_tensors.push(ParsedGgufTensor {
             name,

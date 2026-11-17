@@ -48,7 +48,10 @@ fn test_desktop_lmstudio_and_jan() {
         .resolve_model_path("meta-llama", "Llama-3-8B", "q4_k_m")
         .unwrap();
     assert!(lm_target.to_str().unwrap().contains("meta-llama"));
-    assert!(lm_target.to_str().unwrap().contains("Llama-3-8B-q4_k_m.gguf"));
+    assert!(lm_target
+        .to_str()
+        .unwrap()
+        .contains("Llama-3-8B-q4_k_m.gguf"));
 
     // 2. Test Jan layout and model.json generation
     let dummy_gguf = temp_root.join("sample.gguf");

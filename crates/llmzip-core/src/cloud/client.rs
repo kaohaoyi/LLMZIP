@@ -39,7 +39,10 @@ impl S3Uri {
 }
 
 /// Builds a configured `ObjectStore` client targeting the parsed S3/R2 destination.
-pub fn build_s3_store(target: &S3Uri, creds: Option<&CloudCredentials>) -> Result<Arc<dyn ObjectStore>> {
+pub fn build_s3_store(
+    target: &S3Uri,
+    creds: Option<&CloudCredentials>,
+) -> Result<Arc<dyn ObjectStore>> {
     let mut builder = AmazonS3Builder::new().with_bucket_name(&target.bucket);
 
     if let Some(c) = creds {
@@ -63,13 +66,11 @@ pub fn build_s3_store(target: &S3Uri, creds: Option<&CloudCredentials>) -> Resul
         builder = builder.with_region("us-east-1");
     }
 
-    let s3 = builder
-        .build()
-        .map_err(|e| LlmZipError::S3Error {
-            bucket: target.bucket.clone(),
-            key: target.key.clone(),
-            reason: format!("Failed to configure S3 client: {}", e),
-        })?;
+    let s3 = builder.build().map_err(|e| LlmZipError::S3Error {
+        bucket: target.bucket.clone(),
+        key: target.key.clone(),
+        reason: format!("Failed to configure S3 client: {}", e),
+    })?;
 
     Ok(Arc::new(s3))
 }

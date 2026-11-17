@@ -1,16 +1,18 @@
 use llmzip_core::error::LlmZipError;
 use llmzip_core::hasher::{sha256_hex, StreamingSha256};
 use llmzip_core::layout::{
-    build_deterministic_layout, QuantFormat, QuantPreset, GGUF_MAGIC_UNVERIFIED, GGUF_MAGIC_VERIFIED,
+    build_deterministic_layout, QuantFormat, QuantPreset, GGUF_MAGIC_UNVERIFIED,
+    GGUF_MAGIC_VERIFIED,
 };
 use llmzip_core::preflight::{
-    build_virtual_tensor_space, parse_and_validate_header_len, validate_shard_filename, ShardDescriptor,
+    build_virtual_tensor_space, parse_and_validate_header_len, validate_shard_filename,
+    ShardDescriptor,
 };
 use llmzip_core::quant::gguf_simd::{
     decode_and_validate_upstream_to_f32, dequantize_to_f32, f32_to_f16_clamped, quantize_f32_slice,
 };
 use llmzip_core::streamer::{
-     verify_http_range_response, EngineConfig, HttpResponseMeta, StreamingQuantizeEngine,
+    verify_http_range_response, EngineConfig, HttpResponseMeta, StreamingQuantizeEngine,
 };
 use llmzip_core::wal::MicroWal;
 use std::fs;
@@ -29,14 +31,25 @@ fn build_synthetic_safetensors(tensors: &[(&str, &str, Vec<usize>, Vec<u8>)]) ->
         data_payload.extend_from_slice(raw_bytes);
 
         let mut t_obj = serde_json::Map::new();
-        t_obj.insert("dtype".to_string(), serde_json::Value::String((*dtype).to_string()));
+        t_obj.insert(
+            "dtype".to_string(),
+            serde_json::Value::String((*dtype).to_string()),
+        );
         t_obj.insert(
             "shape".to_string(),
-            serde_json::Value::Array(shape.iter().map(|&d| serde_json::Value::from(d as u64)).collect()),
+            serde_json::Value::Array(
+                shape
+                    .iter()
+                    .map(|&d| serde_json::Value::from(d as u64))
+                    .collect(),
+            ),
         );
         t_obj.insert(
             "data_offsets".to_string(),
-            serde_json::Value::Array(vec![serde_json::Value::from(start), serde_json::Value::from(end)]),
+            serde_json::Value::Array(vec![
+                serde_json::Value::from(start),
+                serde_json::Value::from(end),
+            ]),
         );
         header_map.insert((*name).to_string(), serde_json::Value::Object(t_obj));
     }
@@ -128,8 +141,18 @@ fn test_e05_non_aligned_dimension_fallback_and_moe_strided_layout() {
 
     let (raw_file, header_len) = build_synthetic_safetensors(&[
         ("model.embed_tokens.weight", "F16", vec![2, 96], w_96),
-        ("model.layers.0.self_attn.v_proj.weight", "F16", vec![2, 256], w_256),
-        ("model.layers.0.self_attn.q_proj.weight", "F16", vec![2, 33], w_33),
+        (
+            "model.layers.0.self_attn.v_proj.weight",
+            "F16",
+            vec![2, 256],
+            w_256,
+        ),
+        (
+            "model.layers.0.self_attn.q_proj.weight",
+            "F16",
+            vec![2, 33],
+            w_33,
+        ),
         (
             "model.layers.0.block_sparse_moe.experts.0.w1.weight",
             "F16",
@@ -170,8 +193,14 @@ fn test_e05_non_aligned_dimension_fallback_and_moe_strided_layout() {
     assert!(plan.write_targets[2].fallback_applied);
 
     // Check MoE experts 0 and 1 share `blk.0.ffn_gate_exps.weight` with exact strided sub-offset!
-    assert_eq!(plan.write_targets[3].output_tensor_name, "blk.0.ffn_gate_exps.weight");
-    assert_eq!(plan.write_targets[4].output_tensor_name, "blk.0.ffn_gate_exps.weight");
+    assert_eq!(
+        plan.write_targets[3].output_tensor_name,
+        "blk.0.ffn_gate_exps.weight"
+    );
+    assert_eq!(
+        plan.write_targets[4].output_tensor_name,
+        "blk.0.ffn_gate_exps.weight"
+    );
     assert_eq!(
         plan.write_targets[4].file_write_offset,
         plan.write_targets[3].file_write_offset + plan.write_targets[3].quantized_byte_len
@@ -274,7 +303,12 @@ fn test_gguf_q4k_q6k_q8_0_and_awq_quant_dequant_fidelity() {
             .map(|(a, b)| (a - b) * (a - b))
             .sum::<f32>()
             / (data.len() as f32);
-        assert!(mse < 0.05, "Quantization format {:?} MSE too high: {}", fmt, mse);
+        assert!(
+            mse < 0.05,
+            "Quantization format {:?} MSE too high: {}",
+            fmt,
+            mse
+        );
     }
 }
 
@@ -348,7 +382,10 @@ fn test_e2e_streaming_gguf_chaos_disconnect_zero_redownload_resume_and_e03_commi
             &out_path,
             EngineConfig::default(),
         );
-        assert!(matches!(concurrent_attempt, Err(LlmZipError::FileLocked { .. })));
+        assert!(matches!(
+            concurrent_attempt,
+            Err(LlmZipError::FileLocked { .. })
+        ));
 
         let committed = engine
             .stream_shard_slice(
@@ -436,7 +473,8 @@ fn test_e03_mitm_tampered_shard_quarantine() {
     let _ = fs::remove_file(&out_path);
 
     let mut engine =
-        StreamingQuantizeEngine::new_or_resume(vtas, plan, &out_path, EngineConfig::default()).unwrap();
+        StreamingQuantizeEngine::new_or_resume(vtas, plan, &out_path, EngineConfig::default())
+            .unwrap();
     let res = engine.stream_shard_slice(
         0,
         HttpResponseMeta {
@@ -548,9 +586,13 @@ fn test_e2e_awq_sliding_window_calibration_and_crash_resume_reforward() {
 
     // 1. Stream `embed_tokens` and `q_proj` with AWQ Sliding-Window Calibration, then crash!
     {
-        let mut engine =
-            StreamingQuantizeEngine::new_or_resume(vtas.clone(), plan.clone(), &out_path, cfg.clone())
-                .unwrap();
+        let mut engine = StreamingQuantizeEngine::new_or_resume(
+            vtas.clone(),
+            plan.clone(),
+            &out_path,
+            cfg.clone(),
+        )
+        .unwrap();
         let count = engine
             .stream_shard_slice(
                 0,
@@ -569,7 +611,8 @@ fn test_e2e_awq_sliding_window_calibration_and_crash_resume_reforward() {
     // 2. Resume from `.wal` -> reconstructs AWQ calibration hidden state from on-disk quantized layers and calibrates `k_proj`!
     {
         let mut engine =
-            StreamingQuantizeEngine::new_or_resume(vtas.clone(), plan.clone(), &out_path, cfg).unwrap();
+            StreamingQuantizeEngine::new_or_resume(vtas.clone(), plan.clone(), &out_path, cfg)
+                .unwrap();
         let (_, offset) = engine.resume_cursor();
         let count = engine
             .stream_shard_slice(
@@ -603,12 +646,8 @@ fn test_e06_multi_shard_streaming_and_out_of_order_topology_detection() {
         vec![2, 256],
         w0,
     )]);
-    let (raw_s1, hlen1) = build_synthetic_safetensors(&[(
-        "model.embed_tokens.weight",
-        "F16",
-        vec![2, 256],
-        w1,
-    )]);
+    let (raw_s1, hlen1) =
+        build_synthetic_safetensors(&[("model.embed_tokens.weight", "F16", vec![2, 256], w1)]);
 
     let d0 = ShardDescriptor {
         shard_idx: 0,
@@ -644,7 +683,8 @@ fn test_e06_multi_shard_streaming_and_out_of_order_topology_detection() {
     let _ = fs::remove_file(&out_path);
 
     let mut engine =
-        StreamingQuantizeEngine::new_or_resume(vtas, plan, &out_path, EngineConfig::default()).unwrap();
+        StreamingQuantizeEngine::new_or_resume(vtas, plan, &out_path, EngineConfig::default())
+            .unwrap();
 
     // Stream Shard 0 -> should NOT be committed yet because Shard 1 remains
     engine
@@ -695,7 +735,9 @@ fn test_rope_permutation_and_qkv_fusion_in_ringbuf() {
 
     // Verify ring buffer budget enforcement
     let mut rb = LayerRingBuffer::new(16);
-    assert!(rb.store_layer_tensor("small".to_string(), vec![1.0, 2.0]).is_ok());
+    assert!(rb
+        .store_layer_tensor("small".to_string(), vec![1.0, 2.0])
+        .is_ok());
     assert!(rb
         .store_layer_tensor("overflow".to_string(), vec![1.0, 2.0, 3.0])
         .is_err());
@@ -823,13 +865,28 @@ fn test_nvfp4_sb256_b16_mxfp4_and_fp8_reconstruction_snr() {
 #[test]
 fn test_nvfp4_dimension_fallback_256_to_16_to_f16() {
     let w_256 = vec![0u8; 2 * 256 * 2]; // shape [2, 256] F16 -> div by 256 -> Nvfp4Sb256
-    let w_48 = vec![0u8; 2 * 48 * 2];   // shape [2, 48] F16 -> not div by 256, div by 16 -> fallback Nvfp4B16
-    let w_33 = vec![0u8; 2 * 33 * 2];   // shape [2, 33] F16 -> not div by 16 -> fallback GgufF16
+    let w_48 = vec![0u8; 2 * 48 * 2]; // shape [2, 48] F16 -> not div by 256, div by 16 -> fallback Nvfp4B16
+    let w_33 = vec![0u8; 2 * 33 * 2]; // shape [2, 33] F16 -> not div by 16 -> fallback GgufF16
 
     let (raw_file, header_len) = build_synthetic_safetensors(&[
-        ("model.layers.0.self_attn.q_proj.weight", "F16", vec![2, 256], w_256),
-        ("model.layers.0.self_attn.k_proj.weight", "F16", vec![2, 48], w_48),
-        ("model.layers.0.self_attn.v_proj.weight", "F16", vec![2, 33], w_33),
+        (
+            "model.layers.0.self_attn.q_proj.weight",
+            "F16",
+            vec![2, 256],
+            w_256,
+        ),
+        (
+            "model.layers.0.self_attn.k_proj.weight",
+            "F16",
+            vec![2, 48],
+            w_48,
+        ),
+        (
+            "model.layers.0.self_attn.v_proj.weight",
+            "F16",
+            vec![2, 33],
+            w_33,
+        ),
     ]);
 
     let desc = ShardDescriptor {
@@ -843,7 +900,10 @@ fn test_nvfp4_dimension_fallback_256_to_16_to_f16() {
     let vtas = build_virtual_tensor_space(vec![(desc, header_slice)], false, 8).unwrap();
     let plan = build_deterministic_layout(&vtas, QuantPreset::Nvfp4, "llama").unwrap();
 
-    assert_eq!(plan.write_targets[0].assigned_quant, QuantFormat::Nvfp4Sb256);
+    assert_eq!(
+        plan.write_targets[0].assigned_quant,
+        QuantFormat::Nvfp4Sb256
+    );
     assert!(!plan.write_targets[0].fallback_applied);
 
     assert_eq!(plan.write_targets[1].assigned_quant, QuantFormat::Nvfp4B16);
@@ -856,8 +916,12 @@ fn test_nvfp4_dimension_fallback_256_to_16_to_f16() {
 #[test]
 fn test_e2e_streaming_nvfp4_and_mxfp4_chaos_resume() {
     let n_elem = 2 * 256;
-    let w0: Vec<f32> = (0..n_elem).map(|i| ((i as f32) * 0.03).cos() * 2.0).collect();
-    let w1: Vec<f32> = (0..n_elem).map(|i| ((i as f32) * 0.05).sin() * 2.0).collect();
+    let w0: Vec<f32> = (0..n_elem)
+        .map(|i| ((i as f32) * 0.03).cos() * 2.0)
+        .collect();
+    let w1: Vec<f32> = (0..n_elem)
+        .map(|i| ((i as f32) * 0.05).sin() * 2.0)
+        .collect();
 
     let (raw_shard, header_len) = build_synthetic_safetensors(&[
         (
@@ -960,4 +1024,3 @@ fn test_nvfp4_split_tensors_for_vllm_sglang() {
     // Positive finite global scale
     assert!(split.weight_scale_2_f32 > 0.0 && split.weight_scale_2_f32.is_finite());
 }
-

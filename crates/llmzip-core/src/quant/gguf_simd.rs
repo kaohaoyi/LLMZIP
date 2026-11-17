@@ -90,9 +90,8 @@ pub fn decode_and_validate_upstream_to_f32(
             let count = raw_bytes.len() / 2;
             let mut out = vec![0.0f32; count];
             if count >= 8192 {
-                out.par_chunks_mut(8192)
-                    .enumerate()
-                    .try_for_each(|(chunk_idx, slice)| -> Result<()> {
+                out.par_chunks_mut(8192).enumerate().try_for_each(
+                    |(chunk_idx, slice)| -> Result<()> {
                         let base = chunk_idx * 8192;
                         for (local_i, target) in slice.iter_mut().enumerate() {
                             let i = base + local_i;
@@ -119,7 +118,8 @@ pub fn decode_and_validate_upstream_to_f32(
                             }
                         }
                         Ok(())
-                    })?;
+                    },
+                )?;
             } else {
                 for i in 0..count {
                     let bits = u16::from_le_bytes([raw_bytes[2 * i], raw_bytes[2 * i + 1]]);
@@ -152,9 +152,8 @@ pub fn decode_and_validate_upstream_to_f32(
             let count = raw_bytes.len() / 2;
             let mut out = vec![0.0f32; count];
             if count >= 8192 {
-                out.par_chunks_mut(8192)
-                    .enumerate()
-                    .try_for_each(|(chunk_idx, slice)| -> Result<()> {
+                out.par_chunks_mut(8192).enumerate().try_for_each(
+                    |(chunk_idx, slice)| -> Result<()> {
                         let base = chunk_idx * 8192;
                         for (local_i, target) in slice.iter_mut().enumerate() {
                             let i = base + local_i;
@@ -181,7 +180,8 @@ pub fn decode_and_validate_upstream_to_f32(
                             }
                         }
                         Ok(())
-                    })?;
+                    },
+                )?;
             } else {
                 for i in 0..count {
                     let bits = u16::from_le_bytes([raw_bytes[2 * i], raw_bytes[2 * i + 1]]);
@@ -214,9 +214,8 @@ pub fn decode_and_validate_upstream_to_f32(
             let count = raw_bytes.len() / 4;
             let mut out = vec![0.0f32; count];
             if count >= 8192 {
-                out.par_chunks_mut(8192)
-                    .enumerate()
-                    .try_for_each(|(chunk_idx, slice)| -> Result<()> {
+                out.par_chunks_mut(8192).enumerate().try_for_each(
+                    |(chunk_idx, slice)| -> Result<()> {
                         let base = chunk_idx * 8192;
                         for (local_i, target) in slice.iter_mut().enumerate() {
                             let i = base + local_i;
@@ -240,11 +239,12 @@ pub fn decode_and_validate_upstream_to_f32(
                                     });
                                 }
                             } else {
-                                *target = v.clamp(-FP16_MAX_FINITE, FP16_MAX_FINITE);
+                                *target = v;
                             }
                         }
                         Ok(())
-                    })?;
+                    },
+                )?;
             } else {
                 for i in 0..count {
                     let mut b = [0u8; 4];
@@ -268,7 +268,7 @@ pub fn decode_and_validate_upstream_to_f32(
                             });
                         }
                     } else {
-                        out[i] = v.clamp(-FP16_MAX_FINITE, FP16_MAX_FINITE);
+                        out[i] = v;
                     }
                 }
             }
@@ -571,17 +571,26 @@ pub fn quantize_q6_k(src: &[f32]) -> Vec<u8> {
 
         let mut ql = [0u8; 128];
         let mut qh = [0u8; 64];
-        for i in 0..128 {
-            let q0 = quants[2 * i] & 0x3F;
-            let q1 = quants[2 * i + 1] & 0x3F;
-            ql[i] = (q0 & 0x0F) | ((q1 & 0x0F) << 4);
-        }
-        for i in 0..64 {
-            let q0 = (quants[4 * i] >> 4) & 0x03;
-            let q1 = (quants[4 * i + 1] >> 4) & 0x03;
-            let q2 = (quants[4 * i + 2] >> 4) & 0x03;
-            let q3 = (quants[4 * i + 3] >> 4) & 0x03;
-            qh[i] = q0 | (q1 << 2) | (q2 << 4) | (q3 << 6);
+
+        for n in 0..2 {
+            let base = n * 128;
+            let ql_base = n * 64;
+            let qh_base = n * 32;
+
+            for l in 0..32 {
+                let q1 = quants[base + l];
+                let q2 = quants[base + l + 32];
+                let q3 = quants[base + l + 64];
+                let q4 = quants[base + l + 96];
+
+                ql[ql_base + l] = (q1 & 0x0F) | ((q3 & 0x0F) << 4);
+                ql[ql_base + l + 32] = (q2 & 0x0F) | ((q4 & 0x0F) << 4);
+
+                qh[qh_base + l] = ((q1 >> 4) & 0x03)
+                    | (((q2 >> 4) & 0x03) << 2)
+                    | (((q3 >> 4) & 0x03) << 4)
+                    | (((q4 >> 4) & 0x03) << 6);
+            }
         }
 
         out_slot[0..128].copy_from_slice(&ql);
@@ -628,17 +637,38 @@ pub fn dequantize_q6_k(bytes: &[u8]) -> Vec<f32> {
         let scales = &blk[192..208];
         let d = f16_to_f32(u16::from_le_bytes([blk[208], blk[209]]));
 
-        for idx in 0..256 {
-            let low4 = if idx % 2 == 0 {
-                ql[idx / 2] & 0x0F
-            } else {
-                ql[idx / 2] >> 4
-            };
-            let high2 = (qh[idx / 4] >> ((idx % 4) * 2)) & 0x03;
-            let q = ((low4 | (high2 << 4)) as i8) - 32;
-            let sc = scales[idx / 16] as i8;
-            out.push(d * (sc as f32) * (q as f32));
+        let mut block_out = [0.0f32; 256];
+
+        for n in 0..2 {
+            let base = n * 128;
+            let ql_base = n * 64;
+            let qh_base = n * 32;
+            let sc_base = n * 8;
+
+            for l in 0..32 {
+                let is = l / 16;
+                let q1 = ((ql[ql_base + l] & 0x0F) | ((qh[qh_base + l] & 0x03) << 4)) as i8 - 32;
+                let q2 = ((ql[ql_base + l + 32] & 0x0F) | (((qh[qh_base + l] >> 2) & 0x03) << 4))
+                    as i8
+                    - 32;
+                let q3 =
+                    ((ql[ql_base + l] >> 4) | (((qh[qh_base + l] >> 4) & 0x03) << 4)) as i8 - 32;
+                let q4 = ((ql[ql_base + l + 32] >> 4) | (((qh[qh_base + l] >> 6) & 0x03) << 4))
+                    as i8
+                    - 32;
+
+                let sc1 = scales[sc_base + is] as i8 as f32;
+                let sc2 = scales[sc_base + is + 2] as i8 as f32;
+                let sc3 = scales[sc_base + is + 4] as i8 as f32;
+                let sc4 = scales[sc_base + is + 6] as i8 as f32;
+
+                block_out[base + l] = d * sc1 * (q1 as f32);
+                block_out[base + l + 32] = d * sc2 * (q2 as f32);
+                block_out[base + l + 64] = d * sc3 * (q3 as f32);
+                block_out[base + l + 96] = d * sc4 * (q4 as f32);
+            }
         }
+        out.extend_from_slice(&block_out);
     }
     out
 }
@@ -681,7 +711,10 @@ pub fn dequantize_to_f32(bytes: &[u8], format: QuantFormat) -> Vec<f32> {
             let count = bytes.len() / 2;
             let mut out = Vec::with_capacity(count);
             for i in 0..count {
-                out.push(f16_to_f32(u16::from_le_bytes([bytes[2 * i], bytes[2 * i + 1]])));
+                out.push(f16_to_f32(u16::from_le_bytes([
+                    bytes[2 * i],
+                    bytes[2 * i + 1],
+                ])));
             }
             out
         }

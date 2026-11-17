@@ -10,6 +10,9 @@
 
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md)
 
+> [!IMPORTANT]
+> **致 v0.1.0 使用者重要提醒**：v0.1.0 曾以 `q4_k_m` 產出的模型（受舊 Q6_K 佈局影響）在 llama.cpp 上可能異常，需以 0.2.0 重新量化。
+
 ---
 
 ## 痛點：終結「雙重空間困境（Double Space Dilemma）」

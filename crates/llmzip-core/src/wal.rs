@@ -29,7 +29,11 @@ pub struct S3UploadState {
 }
 
 impl S3UploadState {
-    pub fn new(bucket: impl Into<String>, key: impl Into<String>, upload_id: Option<String>) -> Self {
+    pub fn new(
+        bucket: impl Into<String>,
+        key: impl Into<String>,
+        upload_id: Option<String>,
+    ) -> Self {
         Self {
             upload_id,
             bucket: bucket.into(),
@@ -51,11 +55,16 @@ impl S3UploadState {
     }
 
     pub fn is_part_confirmed(&self, part_number: i32) -> bool {
-        self.parts.iter().any(|p| p.part_number == part_number && p.confirmed)
+        self.parts
+            .iter()
+            .any(|p| p.part_number == part_number && p.confirmed)
     }
 
     pub fn confirmed_bytes(&self) -> u64 {
-        self.parts.iter().map(|p| p.byte_range_end.saturating_sub(p.byte_range_start)).sum()
+        self.parts
+            .iter()
+            .map(|p| p.byte_range_end.saturating_sub(p.byte_range_start))
+            .sum()
     }
 }
 
@@ -99,7 +108,10 @@ impl MicroWal {
     }
 
     pub fn completed_count(&self) -> usize {
-        self.completed_bitset.iter().map(|w| w.count_ones() as usize).sum()
+        self.completed_bitset
+            .iter()
+            .map(|w| w.count_ones() as usize)
+            .sum()
     }
 
     pub fn all_completed(&self) -> bool {
@@ -162,9 +174,10 @@ impl MicroWal {
 
         let mut mid_bytes = [0u8; Sha256MidState::BYTE_SIZE];
         mid_bytes.copy_from_slice(&bytes[24..136]);
-        let sha256_midstate = Sha256MidState::from_bytes(&mid_bytes).ok_or_else(|| LlmZipError::WalCorrupted {
-            reason: "Invalid SHA-256 tail_len in WAL mid-state".to_string(),
-        })?;
+        let sha256_midstate =
+            Sha256MidState::from_bytes(&mid_bytes).ok_or_else(|| LlmZipError::WalCorrupted {
+                reason: "Invalid SHA-256 tail_len in WAL mid-state".to_string(),
+            })?;
 
         let total_tensors = u32::from_le_bytes(bytes[136..140].try_into().unwrap());
         let expected_crc = u32::from_le_bytes(bytes[140..144].try_into().unwrap());

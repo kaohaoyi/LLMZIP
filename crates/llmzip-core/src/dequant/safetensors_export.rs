@@ -94,12 +94,11 @@ pub fn export_safetensors_shards(
     };
 
     let index_path = out_dir.join("model.safetensors.index.json");
-    let index_json = serde_json::to_string_pretty(&index).map_err(|e| {
-        LlmZipError::SecurityPathViolation {
+    let index_json =
+        serde_json::to_string_pretty(&index).map_err(|e| LlmZipError::SecurityPathViolation {
             offending_path: index_path.display().to_string(),
             reason: format!("Failed to serialize index json: {}", e),
-        }
-    })?;
+        })?;
     fs::write(&index_path, index_json)?;
     written_paths.push(index_path);
 
@@ -112,7 +111,10 @@ pub fn write_single_safetensors_file(path: &Path, tensors: Vec<ExportTensor>) ->
 
     // Add __metadata__
     let mut meta = serde_json::Map::new();
-    meta.insert("format".to_string(), serde_json::Value::String("pt".to_string()));
+    meta.insert(
+        "format".to_string(),
+        serde_json::Value::String("pt".to_string()),
+    );
     header_map.insert("__metadata__".to_string(), serde_json::Value::Object(meta));
 
     let mut current_offset: u64 = 0;
@@ -133,12 +135,11 @@ pub fn write_single_safetensors_file(path: &Path, tensors: Vec<ExportTensor>) ->
         header_map.insert(t.name.clone(), val);
     }
 
-    let header_json = serde_json::to_string(&header_map).map_err(|e| {
-        LlmZipError::SecurityPathViolation {
+    let header_json =
+        serde_json::to_string(&header_map).map_err(|e| LlmZipError::SecurityPathViolation {
             offending_path: path.display().to_string(),
             reason: format!("Failed to format header JSON: {}", e),
-        }
-    })?;
+        })?;
     let header_bytes = header_json.as_bytes();
     let header_len = header_bytes.len() as u64;
 

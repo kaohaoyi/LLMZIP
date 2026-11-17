@@ -3,7 +3,7 @@ pub mod gguf_reader;
 pub mod safetensors_export;
 
 pub use engine::{
-    dequantize_to_dtype, f32_to_bf16_bytes, f32_to_fp16_bytes, f32_to_f32_bytes, gguf_to_hf_name,
+    dequantize_to_dtype, f32_to_bf16_bytes, f32_to_f32_bytes, f32_to_fp16_bytes, gguf_to_hf_name,
     DequantDtype,
 };
 pub use gguf_reader::load_and_dequantize_gguf;

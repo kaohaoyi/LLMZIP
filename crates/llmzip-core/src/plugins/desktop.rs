@@ -13,7 +13,10 @@ impl LmStudioPlugin {
         let home = env::var("USERPROFILE")
             .or_else(|_| env::var("HOME"))
             .unwrap_or_else(|_| ".".to_string());
-        PathBuf::from(home).join(".cache").join("lm-studio").join("models")
+        PathBuf::from(home)
+            .join(".cache")
+            .join("lm-studio")
+            .join("models")
     }
 
     pub fn new() -> Self {
@@ -92,12 +95,11 @@ impl JanPlugin {
         });
 
         let json_path = model_dir.join("model.json");
-        let json_str = serde_json::to_string_pretty(&model_json).map_err(|e| {
-            LlmZipError::PluginError {
+        let json_str =
+            serde_json::to_string_pretty(&model_json).map_err(|e| LlmZipError::PluginError {
                 target: "jan".to_string(),
                 reason: format!("Failed serializing model.json: {}", e),
-            }
-        })?;
+            })?;
         fs::write(&json_path, json_str).map_err(LlmZipError::Io)?;
 
         Ok((dest_gguf, json_path))
